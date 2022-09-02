@@ -1,0 +1,2 @@
+adafruit-circuitpython-gps==3.10.4
+pre-commit==2.20.0
