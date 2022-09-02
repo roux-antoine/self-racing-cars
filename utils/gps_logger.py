@@ -10,14 +10,12 @@ MAC_PORT = "/dev/cu.usbserial-110"
 uart = serial.Serial(MAC_PORT, baudrate=9600, timeout=10)
 gps = adafruit_gps.GPS(uart, debug=False)
 
-
 # Tell to only send RMC (required to get 10 Hz)
 gps.send_command(b"PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0")
 # Set the output frequency at 10 Hz
 gps.send_command(b"PMTK220,100")
 
 # TODO maybe we should check that the commands have been successfully applied
-
 
 filename = input("Give file name: ")
 filepath = f"{filename}.nmea"
