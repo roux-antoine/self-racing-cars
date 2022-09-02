@@ -11,8 +11,10 @@ Create the virtual environment:
 * Install the python packages: `pip3 install -r requirements.py`
 
 Before running any python code, remember to activate the virtual environment
+
 The virtual environment can be exited by running: `deactivate`
-Remember to re-run the `pip3 install -r requirements.txt` every time a new package is added to requirements.py
+
+Remember to re-run the `pip3 install -r requirements.txt` every time a new package is added to `requirements.txt`
 
 
 ### Install pre-commit hooks
