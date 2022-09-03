@@ -20,3 +20,5 @@ Remember to re-run the `pip3 install -r requirements.txt` every time a new packa
 ### Install pre-commit hooks
 
 To install the pre-commit hooks, run: `pre-commit install`
+
+It is possible to commit without running the commit hooks by running `git commit --no-verify`
