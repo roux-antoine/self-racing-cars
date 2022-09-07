@@ -8,7 +8,7 @@ Create the virtual environment:
 * Create a directory called `venv` at the root of the repo: `mkdir venv`
 * Create a virtual environment in this folder: `python3 -m venv venv`
 * Activate the virtual environment: `source venv/bin/activate`
-* Install the python packages: `pip3 install -r requirements.py`
+* Install the python packages: `pip3 install -r requirements.txt`
 
 Before running any python code, remember to activate the virtual environment
 
