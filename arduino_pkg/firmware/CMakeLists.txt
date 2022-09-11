@@ -10,6 +10,6 @@ add_definitions(-DUSB_CON)
 
 generate_arduino_firmware(aim
   SRCS aim.cpp ${ROS_LIB_DIR}/time.cpp
-  BOARD uno
+  BOARD mega
   PORT /dev/ttyACM0
 )
