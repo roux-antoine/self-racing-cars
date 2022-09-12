@@ -14,14 +14,16 @@ const int CHANNEL_1_PIN_INT_ID = 1; // i.e. pin 3
 const int CHANNEL_2_PIN_INT_ID = 0; // i.e. pin 2
 const int CHANNEL_3_PIN_INT_ID = 2; // i.e. pin 21
 
-const int THROTTLE_OUTPUT_PIN = 6;
 const int STEERING_OUTPUT_PIN = 7;
+const int THROTTLE_OUTPUT_PIN = 6;
 
 const float STEERING_IDLE = 79;
 const float STEERING_MAX = 98;
 const float STEERING_MIN = 63;
 
-float THROTTLE_IDLE = 90;
+const float THROTTLE_IDLE = 90;
+const float THROTTLE_MAX = 105;
+const float THROTTLE_MIN = 75;
 
 unsigned long PULSE_WIDTH_THRESHOLD = 3500;
 
@@ -29,6 +31,11 @@ unsigned long CHANNEL_1_IDLE_MIN = 1486;
 unsigned long CHANNEL_1_IDLE_MAX = 1521;
 unsigned long CHANNEL_1_MAX = 2039;
 unsigned long CHANNEL_1_MIN = 1061;
+
+unsigned long CHANNEL_2_IDLE_MIN = 1462;
+unsigned long CHANNEL_2_IDLE_MAX = 1498;
+unsigned long CHANNEL_2_MAX = 1660;
+unsigned long CHANNEL_2_MIN = 1319;
 
 // --- VARIABLES ---
 
@@ -75,8 +82,9 @@ void throttle_callback() {
 }
 
 void setup() {
-
   Serial.begin(57600);
+  Serial.println("Entered setup");
+
   attachInterrupt(CHANNEL_1_PIN_INT_ID, steering_callback, CHANGE);
   attachInterrupt(CHANNEL_2_PIN_INT_ID, throttle_callback, CHANGE);
 
@@ -93,8 +101,8 @@ void setup() {
 void loop() {
 
   // Steering
-  if (pulse_width_1 < CHANNEL_1_IDLE_MAX &&
-      pulse_width_1 > CHANNEL_1_IDLE_MIN) {
+  
+  if (pulse_width_1 < CHANNEL_1_IDLE_MAX && pulse_width_1 > CHANNEL_1_IDLE_MIN) {
     steering_angle = STEERING_IDLE;
   } else if (pulse_width_1 >= CHANNEL_1_IDLE_MAX) {
     steering_angle = int(STEERING_IDLE + (pulse_width_1 - CHANNEL_1_IDLE_MAX) * ((STEERING_MAX - STEERING_IDLE) / (CHANNEL_1_MAX - CHANNEL_1_IDLE_MAX)));
@@ -115,11 +123,26 @@ void loop() {
   Serial.println(steering_angle);
 
   // Throttle
-  // throttle_angle = THROTTLE_IDLE + int((pwm_value_2 - 1500) / 33);
-  // throttle_servo.write(throttle_angle);
 
-  // Serial.print("throttle: ");
-  // Serial.println(throttle_angle);
+  if (pulse_width_2 < CHANNEL_2_IDLE_MAX && pulse_width_2 > CHANNEL_2_IDLE_MIN) {
+    throttle_angle = THROTTLE_IDLE;
+  } else if (pulse_width_2 >= CHANNEL_2_IDLE_MAX) {
+    throttle_angle = int(THROTTLE_IDLE + (pulse_width_2 - CHANNEL_2_IDLE_MAX) * ((THROTTLE_MAX - THROTTLE_IDLE) / (CHANNEL_2_MAX - CHANNEL_2_IDLE_MAX)));
+  } else if (pulse_width_2 <= CHANNEL_2_IDLE_MIN) {
+    throttle_angle = int(THROTTLE_IDLE - (CHANNEL_2_IDLE_MIN - pulse_width_2) * ((THROTTLE_IDLE - THROTTLE_MIN) / (CHANNEL_2_IDLE_MIN - CHANNEL_2_MIN)));
+  } else {
+  }
+
+  if (throttle_angle > THROTTLE_MAX) {
+    throttle_servo.write(THROTTLE_MAX);
+  } else if (throttle_angle < THROTTLE_MIN) {
+    throttle_servo.write(THROTTLE_MIN);
+  } else {
+    throttle_servo.write(throttle_angle);
+  }
+
+  Serial.print("throttle: ");
+  Serial.println(throttle_angle);
 
   delay(1);
 }
