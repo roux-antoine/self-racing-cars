@@ -1,0 +1,2 @@
+uint8 steering_angle
+uint8 throttle_angle

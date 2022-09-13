@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <Servo.h>
+#include <ros.h>
+#include <self_racing_car_msgs/VehicleCommand.h>
 
 // --- CONSTANTS---
 
