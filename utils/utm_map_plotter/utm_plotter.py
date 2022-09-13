@@ -48,17 +48,43 @@ input_name_map = input("Enter name for input_name_map: ")
 
 if input_name_map:
 
-    map_latitudes = []
-    map_longitudes = []
+    tmp_latitudes = []
+    tmp_longitudes = []
+
+    list_latitudes = []
+    list_longitudes = []
+    list_colors = []
+    list_styles = []
 
     with open(input_name_map) as input_file:
         for line in input_file:
-            map_latitudes.append(float(line.split()[1]))
-            map_longitudes.append(float(line.split()[0]))
+            if line == "\n":
+                list_latitudes.append(tmp_latitudes)
+                list_longitudes.append(tmp_longitudes)
+                tmp_latitudes = []
+                tmp_longitudes = []
+            elif line == "edge\n":
+                list_colors.append("black")
+                list_styles.append("plot")
+            elif line == "refline\n":
+                list_colors.append("blue")
+                list_styles.append("scatter")
+            else:
+                tmp_latitudes.append(float(line.split()[1]))
+                tmp_longitudes.append(float(line.split()[0]))
+        list_latitudes.append(tmp_latitudes)
+        list_longitudes.append(tmp_longitudes)
 
-    map_utms = utm.from_latlon(np.array(map_latitudes), np.array(map_longitudes))
-
-    plt.plot(map_utms[:][0], map_utms[:][1])
+    for lats, lons, color, style in zip(
+        list_latitudes, list_longitudes, list_colors, list_styles
+    ):
+        map_utms = utm.from_latlon(np.array(lats), np.array(lons))
+        if style == "plot":
+            plt.plot(map_utms[:][0], map_utms[:][1], color=color)
+        elif style == "scatter":
+            plt.scatter(map_utms[:][0], map_utms[:][1], color=color)
+        else:
+            print("Error...")
 
 ###
 
