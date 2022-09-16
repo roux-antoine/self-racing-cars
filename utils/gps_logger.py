@@ -32,7 +32,7 @@ while True:
                 print("Command PMTK314 did not run successfully, exiting")
                 sys.exit()
 
-# # Set the output frequency at 10 Hz
+# Set the output frequency at 10 Hz
 gps.send_command(b"PMTK220,100")
 
 # NOTE it seems there is no way to make sure the PMTK220 command was applied successfully

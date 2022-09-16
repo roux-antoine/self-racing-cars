@@ -18,6 +18,10 @@ TODO:
 - improve error handling
 """
 
+"""
+Documentation for package: https://github.com/adafruit/Adafruit_CircuitPython_GPS
+"""
+
 
 class GpsPublisher:
     def __init__(self):
@@ -51,6 +55,10 @@ class GpsPublisher:
                         print("Command PMTK314 did not run successfully, exiting")
                         sys.exit()
 
+        # Set the output frequency at 10 Hz
+        self.gps.send_command(b"PMTK220,100")
+        # NOTE it seems there is no way to make sure the PMTK220 command was applied successfully
+
     def loop(self):
         while not rospy.is_shutdown():
 
@@ -61,13 +69,12 @@ class GpsPublisher:
                 continue
             else:
                 msg = RmcNmea()
-                msg.timestamp_utc = self.gps.timestamp_utc
+                msg.header.stamp = rospy.Time.now()
+                msg.timestamp_utc = 0  # TODO replace with self.gps.timestamp_utc but needs to be converted from time.struct_time
                 msg.latitude = self.gps.latitude
                 msg.longitude = self.gps.longitude
                 msg.speed_knots = self.gps.speed_knots
-                msg.track_angle = self.gps.track_angle
-
-                print(self.gps._raw_sentence)
+                msg.track_angle_deg = self.gps.track_angle_deg
 
                 self.pub.publish(msg)
             self.rate.sleep()
