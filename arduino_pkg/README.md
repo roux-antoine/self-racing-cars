@@ -24,6 +24,7 @@ Then run: `catkin build arduino_pkg`
 * Build the package with the custom messsages: `catkin build self_racing_car_msgs`
 * Deploy the built libraries to Arduino IDE's library folder: `rosrun rosserial_arduino make_libraries.py ~/Downloads/arduino-1.8.19/libraries self_racing_car_msgs`
 * Copy-paste the script in the Arduino IDE
+* Make sure that the "bridge" is not running
 * Build and upload from the Arduino IDE
 
 # Running the code

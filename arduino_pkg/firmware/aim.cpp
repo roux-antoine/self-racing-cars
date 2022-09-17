@@ -16,8 +16,8 @@ const int CHANNEL_1_PIN_INT_ID = 1; // i.e. pin 3
 const int CHANNEL_2_PIN_INT_ID = 0; // i.e. pin 2
 const int CHANNEL_3_PIN_INT_ID = 2; // i.e. pin 21
 
-const int STEERING_OUTPUT_PIN = 7;
-const int THROTTLE_OUTPUT_PIN = 6;
+const int STEERING_OUTPUT_PIN = 6;
+const int THROTTLE_OUTPUT_PIN = 7;
 
 const int LED_PIN = 13;
 
@@ -41,26 +41,29 @@ const unsigned long CHANNEL_2_IDLE_MAX = 1498;
 const unsigned long CHANNEL_2_MAX = 1660;
 const unsigned long CHANNEL_2_MIN = 1319;
 
-bool ROS_MODE = true;
+const bool ROS_MODE = true;
 
 // ------ VARIABLES ------
 
-float throttle_angle = THROTTLE_IDLE;
-float steering_angle = STEERING_IDLE;
+// commands that will be sent by PWM
+float steering_angle_rx = STEERING_IDLE;
+float throttle_angle_rx = THROTTLE_IDLE;
+volatile float steering_angle_pi = STEERING_IDLE;
+volatile float throttle_angle_pi = THROTTLE_IDLE;
+float steering_angle_final = STEERING_IDLE;
+float throttle_angle_final = THROTTLE_IDLE;
 
 // channel 1 = steering
 volatile unsigned long tmp_pulse_width_1 = 0;
 volatile unsigned long pulse_width_1 = 0;
 volatile unsigned long prev_time_1 = 0;
-
 // channel 2 = throttle
 volatile unsigned long tmp_pulse_width_2 = 0;
 volatile unsigned long pulse_width_2 = 0;
 volatile unsigned long prev_time_2 = 0;
-
 // channel 3 = engagement switch
-volatile unsigned long pwm_value_3_change = 0;
-volatile unsigned long pwm_value_3 = 0;
+volatile unsigned long tmp_pulse_width_3 = 0;
+volatile bool engaged_mode = false;
 volatile unsigned long prev_time_3 = 0;
 
 // Servo objects
@@ -71,8 +74,10 @@ Servo steering_servo;
 ros::NodeHandle nh;
 void vehicle_command_callback(const self_racing_car_msgs::VehicleCommand &msg) {
   digitalWrite(LED_PIN, HIGH - digitalRead(LED_PIN)); // blink the led
+  steering_angle_pi = msg.steering_angle;
+  throttle_angle_pi = msg.throttle_angle;
 }
-ros::Subscriber<self_racing_car_msgs::VehicleCommand> sub("vehicle_command_subscriber", &vehicle_command_callback);
+ros::Subscriber<self_racing_car_msgs::VehicleCommand> sub("vehicle_command", &vehicle_command_callback);
 
 // ------ FUNCTIONS ------
 
@@ -94,31 +99,48 @@ void throttle_callback() {
   }
 }
 
+void display_value(const char description[], float value) {
+  if (ROS_MODE) {
+    nh.loginfo(description);
+    char result[8];
+    dtostrf(value, 6, 2, result);
+    nh.loginfo(result);
+  } else {
+    Serial.print(description);
+    Serial.println(value);
+  }
+}
+
 // ------ SETUP ------
 
 void setup() {
 
+  // Setting up connection etc
   if (ROS_MODE) {
     nh.initNode();
     nh.getHardware()->setBaud(57600);
     nh.subscribe(sub);
+    nh.loginfo("In the setup");
   } else {
     Serial.begin(57600);
-    Serial.println("Entered setup");
+    Serial.println("In the setup");
   }
-  pinMode(LED_PIN, OUTPUT);
 
+  // Setting up pins
   attachInterrupt(CHANNEL_1_PIN_INT_ID, steering_callback, CHANGE);
   attachInterrupt(CHANNEL_2_PIN_INT_ID, throttle_callback, CHANGE);
-
-  throttle_servo.attach(THROTTLE_OUTPUT_PIN);
-  throttle_servo.write(THROTTLE_IDLE);
-
+  pinMode(LED_PIN, OUTPUT);
   steering_servo.attach(STEERING_OUTPUT_PIN);
-  steering_servo.write(STEERING_IDLE);
+  throttle_servo.attach(THROTTLE_OUTPUT_PIN);
 
+  // Doing the ESC calibration
+  steering_servo.write(STEERING_IDLE);
+  throttle_servo.write(THROTTLE_IDLE);
   delay(5000);
-  if (!ROS_MODE) {
+
+  if (ROS_MODE) {
+    nh.loginfo("End setup");
+  } else {
     Serial.println("End setup");
   }
 }
@@ -127,52 +149,59 @@ void setup() {
 
 void loop() {
 
-  // Steering
-
+  // Compute steering from the Rx
   if (pulse_width_1 < CHANNEL_1_IDLE_MAX && pulse_width_1 > CHANNEL_1_IDLE_MIN) {
-    steering_angle = STEERING_IDLE;
+    steering_angle_rx = STEERING_IDLE;
   } else if (pulse_width_1 >= CHANNEL_1_IDLE_MAX) {
-    steering_angle = int(STEERING_IDLE + (pulse_width_1 - CHANNEL_1_IDLE_MAX) * ((STEERING_MAX - STEERING_IDLE) / (CHANNEL_1_MAX - CHANNEL_1_IDLE_MAX)));
+    steering_angle_rx = int(STEERING_IDLE + (pulse_width_1 - CHANNEL_1_IDLE_MAX) * ((STEERING_MAX - STEERING_IDLE) / (CHANNEL_1_MAX - CHANNEL_1_IDLE_MAX)));
   } else if (pulse_width_1 <= CHANNEL_1_IDLE_MIN) {
-    steering_angle = int(STEERING_IDLE - (CHANNEL_1_IDLE_MIN - pulse_width_1) * ((STEERING_IDLE - STEERING_MIN) / (CHANNEL_1_IDLE_MIN - CHANNEL_1_MIN)));
+    steering_angle_rx = int(STEERING_IDLE - (CHANNEL_1_IDLE_MIN - pulse_width_1) * ((STEERING_IDLE - STEERING_MIN) / (CHANNEL_1_IDLE_MIN - CHANNEL_1_MIN)));
   } else {
   }
 
-  if (steering_angle > STEERING_MAX) {
+  // Compute throttle from the Rx
+  if (pulse_width_2 < CHANNEL_2_IDLE_MAX && pulse_width_2 > CHANNEL_2_IDLE_MIN) {
+    throttle_angle_rx = THROTTLE_IDLE;
+  } else if (pulse_width_2 >= CHANNEL_2_IDLE_MAX) {
+    throttle_angle_rx = int(THROTTLE_IDLE + (pulse_width_2 - CHANNEL_2_IDLE_MAX) * ((THROTTLE_MAX - THROTTLE_IDLE) / (CHANNEL_2_MAX - CHANNEL_2_IDLE_MAX)));
+  } else if (pulse_width_2 <= CHANNEL_2_IDLE_MIN) {
+    throttle_angle_rx = int(THROTTLE_IDLE - (CHANNEL_2_IDLE_MIN - pulse_width_2) * ((THROTTLE_IDLE - THROTTLE_MIN) / (CHANNEL_2_IDLE_MIN - CHANNEL_2_MIN)));
+  } else {
+  }
+
+  // Displaying the values
+  display_value("steering Rx: ", steering_angle_rx);
+  display_value("throttle Rx: ", throttle_angle_rx);
+  display_value("steering Pi: ", steering_angle_pi);
+  display_value("throttle Pi: ", throttle_angle_pi);
+
+  // Deciding which command to send
+  if (engaged_mode) {
+    // TODO:
+    // - the logic here can be improved, for instance if the values from the Rx are outside of a certain region, we send them anyway
+    // - we can also try to do some smoothing
+    steering_angle_final = steering_angle_pi;
+    throttle_angle_final = throttle_angle_pi;
+  } else {
+    steering_angle_final = steering_angle_rx;
+    throttle_angle_final = throttle_angle_rx;
+  }
+
+  // Sending the commands
+  if (steering_angle_final > STEERING_MAX) {
     steering_servo.write(STEERING_MAX);
-  } else if (steering_angle < STEERING_MIN) {
+  } else if (steering_angle_final < STEERING_MIN) {
     steering_servo.write(STEERING_MIN);
   } else {
-    steering_servo.write(steering_angle);
+    steering_servo.write(steering_angle_final);
   }
 
-  if (!ROS_MODE) {
-    Serial.print("steering: ");
-    Serial.println(steering_angle);
-  }
-
-  // Throttle
-
-  if (pulse_width_2 < CHANNEL_2_IDLE_MAX && pulse_width_2 > CHANNEL_2_IDLE_MIN) {
-    throttle_angle = THROTTLE_IDLE;
-  } else if (pulse_width_2 >= CHANNEL_2_IDLE_MAX) {
-    throttle_angle = int(THROTTLE_IDLE + (pulse_width_2 - CHANNEL_2_IDLE_MAX) * ((THROTTLE_MAX - THROTTLE_IDLE) / (CHANNEL_2_MAX - CHANNEL_2_IDLE_MAX)));
-  } else if (pulse_width_2 <= CHANNEL_2_IDLE_MIN) {
-    throttle_angle = int(THROTTLE_IDLE - (CHANNEL_2_IDLE_MIN - pulse_width_2) * ((THROTTLE_IDLE - THROTTLE_MIN) / (CHANNEL_2_IDLE_MIN - CHANNEL_2_MIN)));
-  } else {
-  }
-
-  if (throttle_angle > THROTTLE_MAX) {
+  if (throttle_angle_final > THROTTLE_MAX) {
     throttle_servo.write(THROTTLE_MAX);
-  } else if (throttle_angle < THROTTLE_MIN) {
+  } else if (throttle_angle_final < THROTTLE_MIN) {
     throttle_servo.write(THROTTLE_MIN);
   } else {
-    throttle_servo.write(throttle_angle);
-  }
-
-  if (!ROS_MODE) {
-    Serial.print("throttle: ");
-    Serial.println(throttle_angle);
+    throttle_servo.write(throttle_angle_final);
   }
 
   if (ROS_MODE) {
