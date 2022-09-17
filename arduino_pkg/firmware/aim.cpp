@@ -3,7 +3,7 @@
 #include <ros.h>
 #include <self_racing_car_msgs/VehicleCommand.h>
 
-// --- CONSTANTS---
+// ------ CONSTANTS ------
 
 // Interrupt pins
 // PIN MEGA   Interrupt pim
@@ -19,6 +19,8 @@ const int CHANNEL_3_PIN_INT_ID = 2; // i.e. pin 21
 const int STEERING_OUTPUT_PIN = 7;
 const int THROTTLE_OUTPUT_PIN = 6;
 
+const int LED_PIN = 13;
+
 const float STEERING_IDLE = 79;
 const float STEERING_MAX = 98;
 const float STEERING_MIN = 63;
@@ -27,19 +29,21 @@ const float THROTTLE_IDLE = 90;
 const float THROTTLE_MAX = 105;
 const float THROTTLE_MIN = 75;
 
-unsigned long PULSE_WIDTH_THRESHOLD = 3500;
+const unsigned long PULSE_WIDTH_THRESHOLD = 3500;
 
-unsigned long CHANNEL_1_IDLE_MIN = 1486;
-unsigned long CHANNEL_1_IDLE_MAX = 1521;
-unsigned long CHANNEL_1_MAX = 2039;
-unsigned long CHANNEL_1_MIN = 1061;
+const unsigned long CHANNEL_1_IDLE_MIN = 1486;
+const unsigned long CHANNEL_1_IDLE_MAX = 1521;
+const unsigned long CHANNEL_1_MAX = 2039;
+const unsigned long CHANNEL_1_MIN = 1061;
 
-unsigned long CHANNEL_2_IDLE_MIN = 1462;
-unsigned long CHANNEL_2_IDLE_MAX = 1498;
-unsigned long CHANNEL_2_MAX = 1660;
-unsigned long CHANNEL_2_MIN = 1319;
+const unsigned long CHANNEL_2_IDLE_MIN = 1462;
+const unsigned long CHANNEL_2_IDLE_MAX = 1498;
+const unsigned long CHANNEL_2_MAX = 1660;
+const unsigned long CHANNEL_2_MIN = 1319;
 
-// --- VARIABLES ---
+bool ROS_MODE = true;
+
+// ------ VARIABLES ------
 
 float throttle_angle = THROTTLE_IDLE;
 float steering_angle = STEERING_IDLE;
@@ -59,11 +63,18 @@ volatile unsigned long pwm_value_3_change = 0;
 volatile unsigned long pwm_value_3 = 0;
 volatile unsigned long prev_time_3 = 0;
 
-// servo object
+// Servo objects
 Servo throttle_servo;
 Servo steering_servo;
 
-// --- FUNCTIONS ---
+// ROS stuff
+ros::NodeHandle nh;
+void vehicle_command_callback(const self_racing_car_msgs::VehicleCommand &msg) {
+  digitalWrite(LED_PIN, HIGH - digitalRead(LED_PIN)); // blink the led
+}
+ros::Subscriber<self_racing_car_msgs::VehicleCommand> sub("vehicle_command_subscriber", &vehicle_command_callback);
+
+// ------ FUNCTIONS ------
 
 void steering_callback() {
   tmp_pulse_width_1 = micros() - prev_time_1;
@@ -83,9 +94,19 @@ void throttle_callback() {
   }
 }
 
+// ------ SETUP ------
+
 void setup() {
-  Serial.begin(57600);
-  Serial.println("Entered setup");
+
+  if (ROS_MODE) {
+    nh.initNode();
+    nh.getHardware()->setBaud(57600);
+    nh.subscribe(sub);
+  } else {
+    Serial.begin(57600);
+    Serial.println("Entered setup");
+  }
+  pinMode(LED_PIN, OUTPUT);
 
   attachInterrupt(CHANNEL_1_PIN_INT_ID, steering_callback, CHANGE);
   attachInterrupt(CHANNEL_2_PIN_INT_ID, throttle_callback, CHANGE);
@@ -97,13 +118,17 @@ void setup() {
   steering_servo.write(STEERING_IDLE);
 
   delay(5000);
-  Serial.println("End setup");
+  if (!ROS_MODE) {
+    Serial.println("End setup");
+  }
 }
+
+// ------ LOOP ------
 
 void loop() {
 
   // Steering
-  
+
   if (pulse_width_1 < CHANNEL_1_IDLE_MAX && pulse_width_1 > CHANNEL_1_IDLE_MIN) {
     steering_angle = STEERING_IDLE;
   } else if (pulse_width_1 >= CHANNEL_1_IDLE_MAX) {
@@ -121,8 +146,12 @@ void loop() {
     steering_servo.write(steering_angle);
   }
 
-  Serial.print("steering: ");
-  Serial.println(steering_angle);
+  if (!ROS_MODE) {
+    Serial.print("steering: ");
+  }
+  if (!ROS_MODE) {
+    Serial.println(steering_angle);
+  }
 
   // Throttle
 
@@ -143,8 +172,15 @@ void loop() {
     throttle_servo.write(throttle_angle);
   }
 
-  Serial.print("throttle: ");
-  Serial.println(throttle_angle);
+  if (!ROS_MODE) {
+    Serial.print("throttle: ");
+  }
+  if (!ROS_MODE) {
+    Serial.println(throttle_angle);
+  }
 
+  if (ROS_MODE) {
+    nh.spinOnce();
+  }
   delay(1);
 }
