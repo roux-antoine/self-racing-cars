@@ -148,8 +148,6 @@ void loop() {
 
   if (!ROS_MODE) {
     Serial.print("steering: ");
-  }
-  if (!ROS_MODE) {
     Serial.println(steering_angle);
   }
 
@@ -174,8 +172,6 @@ void loop() {
 
   if (!ROS_MODE) {
     Serial.print("throttle: ");
-  }
-  if (!ROS_MODE) {
     Serial.println(throttle_angle);
   }
 
