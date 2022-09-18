@@ -40,6 +40,7 @@ const unsigned long CHANNEL_2_IDLE_MIN = 1462;
 const unsigned long CHANNEL_2_IDLE_MAX = 1498;
 const unsigned long CHANNEL_2_MAX = 1660;
 const unsigned long CHANNEL_2_MIN = 1319;
+const unsigned long CHANNEL_3_THRESHOLD = 1600;
 
 const bool ROS_MODE = true;
 
@@ -99,6 +100,19 @@ void throttle_callback() {
   }
 }
 
+void engaged_mode_callback() {
+  tmp_pulse_width_3 = micros() - prev_time_3;
+  prev_time_3 = micros();
+
+  if (tmp_pulse_width_3 < PULSE_WIDTH_THRESHOLD) {
+    if (tmp_pulse_width_3 > CHANNEL_3_THRESHOLD) {
+      engaged_mode = true;
+    } else {
+      engaged_mode = false;
+    }
+  }
+}
+
 void display_value(const char description[], float value) {
   if (ROS_MODE) {
     nh.loginfo(description);
@@ -129,6 +143,7 @@ void setup() {
   // Setting up pins
   attachInterrupt(CHANNEL_1_PIN_INT_ID, steering_callback, CHANGE);
   attachInterrupt(CHANNEL_2_PIN_INT_ID, throttle_callback, CHANGE);
+  attachInterrupt(CHANNEL_3_PIN_INT_ID, engaged_mode_callback, CHANGE);
   pinMode(LED_PIN, OUTPUT);
   steering_servo.attach(STEERING_OUTPUT_PIN);
   throttle_servo.attach(THROTTLE_OUTPUT_PIN);
@@ -170,10 +185,11 @@ void loop() {
   }
 
   // Displaying the values
-  display_value("steering Rx: ", steering_angle_rx);
-  display_value("throttle Rx: ", throttle_angle_rx);
-  display_value("steering Pi: ", steering_angle_pi);
-  display_value("throttle Pi: ", throttle_angle_pi);
+  //  display_value("steering Rx: ", steering_angle_rx);
+  //  display_value("throttle Rx: ", throttle_angle_rx);
+  //  display_value("steering Pi: ", steering_angle_pi);
+  //  display_value("throttle Pi: ", throttle_angle_pi);
+  //   display_value("engaged mode: ", engaged_mode);
 
   // Deciding which command to send
   if (engaged_mode) {
@@ -187,22 +203,24 @@ void loop() {
     throttle_angle_final = throttle_angle_rx;
   }
 
-  // Sending the commands
+  // Making sure the commands are in bounds
   if (steering_angle_final > STEERING_MAX) {
-    steering_servo.write(STEERING_MAX);
+    steering_angle_final = STEERING_MAX;
   } else if (steering_angle_final < STEERING_MIN) {
-    steering_servo.write(STEERING_MIN);
-  } else {
-    steering_servo.write(steering_angle_final);
+    steering_angle_final = STEERING_MIN;
   }
 
   if (throttle_angle_final > THROTTLE_MAX) {
-    throttle_servo.write(THROTTLE_MAX);
+    throttle_angle_final = THROTTLE_MAX;
   } else if (throttle_angle_final < THROTTLE_MIN) {
-    throttle_servo.write(THROTTLE_MIN);
-  } else {
-    throttle_servo.write(throttle_angle_final);
+    throttle_angle_final = THROTTLE_MIN;
   }
+
+  // Sending the commands
+  //  display_value("sending steering", steering_angle_final);
+  //  display_value("sending throttle", throttle_angle_final);
+  steering_servo.write(steering_angle_final);
+  throttle_servo.write(throttle_angle_final);
 
   if (ROS_MODE) {
     nh.spinOnce();
