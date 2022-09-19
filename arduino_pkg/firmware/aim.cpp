@@ -35,11 +35,16 @@ const unsigned long CHANNEL_1_IDLE_MIN = 1486;
 const unsigned long CHANNEL_1_IDLE_MAX = 1521;
 const unsigned long CHANNEL_1_MAX = 2039;
 const unsigned long CHANNEL_1_MIN = 1061;
+const unsigned long CHANNEL_1_OVERRIDE_MIN = 1275;
+const unsigned long CHANNEL_1_OVERRIDE_MAX = 1780;
 
 const unsigned long CHANNEL_2_IDLE_MIN = 1462;
 const unsigned long CHANNEL_2_IDLE_MAX = 1498;
 const unsigned long CHANNEL_2_MAX = 1660;
 const unsigned long CHANNEL_2_MIN = 1319;
+const unsigned long CHANNEL_2_OVERRIDE_MIN = 1390;
+const unsigned long CHANNEL_2_OVERRIDE_MAX = 1579;
+
 const unsigned long CHANNEL_3_THRESHOLD = 1600;
 
 const bool ROS_MODE = true;
@@ -66,6 +71,10 @@ volatile unsigned long prev_time_2 = 0;
 volatile unsigned long tmp_pulse_width_3 = 0;
 volatile bool engaged_mode = false;
 volatile unsigned long prev_time_3 = 0;
+
+// override flags
+bool override_steering = false;
+bool override_throttle = false;
 
 // Servo objects
 Servo throttle_servo;
@@ -191,16 +200,32 @@ void loop() {
   //  display_value("throttle Pi: ", throttle_angle_pi);
   //   display_value("engaged mode: ", engaged_mode);
 
-  // Deciding which command to send
-  if (engaged_mode) {
-    // TODO:
-    // - the logic here can be improved, for instance if the values from the Rx are outside of a certain region, we send them anyway
-    // - we can also try to do some smoothing
-    steering_angle_final = steering_angle_pi;
-    throttle_angle_final = throttle_angle_pi;
+  // checking if we are in override mode
+  if (pulse_width_1 < CHANNEL_1_OVERRIDE_MIN || pulse_width_1 > CHANNEL_1_OVERRIDE_MAX) {
+    override_steering = true;
   } else {
+    override_steering = false;
+  }
+  if (pulse_width_2 < CHANNEL_2_OVERRIDE_MIN || pulse_width_2 > CHANNEL_2_OVERRIDE_MAX) {
+    override_throttle = true;
+  } else {
+    override_throttle = false;
+  }
+
+  // Deciding which command to send
+  if (!engaged_mode) {
     steering_angle_final = steering_angle_rx;
     throttle_angle_final = throttle_angle_rx;
+  } else if (override_steering) {
+    steering_angle_final = steering_angle_rx;
+    throttle_angle_final = throttle_angle_pi;
+  } else if (override_throttle) {
+    steering_angle_final = steering_angle_pi;
+    throttle_angle_final = throttle_angle_rx;
+  } else {
+    // TODO: we can try to do some smoothing
+    steering_angle_final = steering_angle_pi;
+    throttle_angle_final = throttle_angle_pi;
   }
 
   // Making sure the commands are in bounds
