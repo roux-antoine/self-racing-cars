@@ -10,8 +10,8 @@ print()
 filename_base = input("Enter filename base: ")
 
 coordinates_line = None
-with open(f"kml_files/{filename_base}.kml") as foo:
-    for line in foo:
+with open(f"kml_files/{filename_base}.kml") as kml_file:
+    for line in kml_file:
         if "-122" in line:
             coordinates_line = line.strip()
             break
