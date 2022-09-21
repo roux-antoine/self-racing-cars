@@ -32,4 +32,4 @@ So, if needed, multiple txt files with the x and y coordinates can be combined a
 
 # How to plot a map
 
-Use `python map_plotter.py`
+Use `utm_plotter_from_x_y.py`

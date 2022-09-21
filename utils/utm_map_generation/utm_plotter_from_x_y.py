@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-flist = glob.glob(os.path.join("lat_lon_files", "*.txt"))
+flist = glob.glob(os.path.join("x_y_files", "*.txt"))
 print("Available txt: ")
 for path in flist:
     print(path)
