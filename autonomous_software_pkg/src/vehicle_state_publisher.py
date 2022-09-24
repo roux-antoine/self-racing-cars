@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 
+import math
+
 import rospy
 import utm
 
@@ -14,6 +16,9 @@ class VehicleStatePublisher:
         self.sub = rospy.Subscriber("gps_info", RmcNmea, self.callback, queue_size=10)
         self.pub = rospy.Publisher("vehicle_state", VehicleState, queue_size=10)
         self.rate = rospy.Rate(1000)  # 1kHz
+
+        self.last_x = 0
+        self.last_y = 0
 
     def callback(self, rmc_msg):
         # read RMC message
@@ -31,9 +36,16 @@ class VehicleStatePublisher:
         vehicle_state_msg.vx = -1  # TODO project the speed
         vehicle_state_msg.vy = -1  # TODO project the speed
         vehicle_state_msg.vz = -1  # TODO project the speed
-        vehicle_state_msg.track_angle_deg = rmc_msg.track_angle_deg
+        diff_x = utm_values[0] - self.last_x
+        diff_y = utm_values[1] - self.last_y
+        vehicle_state_msg.track_angle_deg = math.pi / 2 - math.atan2(
+            diff_y, -diff_x
+        )  # the minus is there because of the utm frame orientation maybe
 
         self.pub.publish(vehicle_state_msg)
+
+        self.last_x = utm_values[0]
+        self.last_y = utm_values[1]
 
     def loop(self):
         while not rospy.is_shutdown():
