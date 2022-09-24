@@ -28,7 +28,7 @@ class GpsPublisher:
         uart = serial.Serial(PI_PORT, baudrate=9600, timeout=10)
         self.gps = adafruit_gps.GPS(uart, debug=False)
         self.pub = rospy.Publisher("gps_info", RmcNmea, queue_size=10)
-        rospy.init_node("talker", anonymous=True)
+        rospy.init_node("gps_publisher", anonymous=True)
         self.rate = rospy.Rate(1000)  # 1kHz
 
     def setup_connection(self):
