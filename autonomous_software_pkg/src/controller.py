@@ -27,6 +27,7 @@ class Controller:
         self.wheel_base = rospy.get_param("~wheel_base", 1)
         self.max_curvature = rospy.get_param("~max_curvature", 100000)
         self.min_curvature = rospy.get_param("~min_curvature", 0.3)
+        self.past_states_window_size = 5
         # self.frequency          = rospy.get_param('~frequency', 2.0)
         # self.rate               = rospy.Rate(self.frequency)
         # self.rate_init          = rospy.Rate(1.0)   # Rate while we wait for topic
@@ -84,7 +85,11 @@ class Controller:
         # self.current_state.track_angle_deg = 0
 
     def callback_current_state(self, msg):
+
         self.current_state = msg
+        self.last_n_states.append(self.current_state)
+        if len(self.last_n_states) > self.past_states_window_size:
+            self.last_n_states.pop(0)
 
         # while (self.current_waypoints == None or self.current_state == None) and not rospy.is_shutdown():
         #     rospy.logwarn('Waiting for topics ...')
@@ -98,7 +103,7 @@ class Controller:
             # Add something to only run if we received input topics recently
 
             # Find lookahead waypoint = First waypoint further than lookahead distance and in front of vehicle
-            lookahead_wp, id_lookahead_wp = self.getNextWaypoint()
+            lookahead_wp, self.id_lookahead_wp = self.getNextWaypoint()
 
             # print("Lookahead wp: ")
             # print("(x, y): ", str(lookahead_wp.x) + ", " + str(lookahead_wp.y))
@@ -117,8 +122,8 @@ class Controller:
             # Equation linear equation: "ax + by + c = 0"
             # if there are two points (x1,y1) , (x2,y2), a = "y2-y1, b = "(-1) * x2 - x1" ,c = "(-1) * (y2-y1)x1 + (x2-x1)y1"
             a, b, c = self.getLinearEquation(
-                self.current_waypoints[id_lookahead_wp],
-                self.current_waypoints[id_lookahead_wp - 1],
+                self.current_waypoints[self.id_lookahead_wp],
+                self.current_waypoints[self.id_lookahead_wp - 1],
             )
             # print("Line equation: ", a, b, c)
 
@@ -131,74 +136,12 @@ class Controller:
                 (self.current_state.x, self.current_state.y),
                 self.lookahead_distance,
                 (
-                    self.current_waypoints[id_lookahead_wp].x,
-                    self.current_waypoints[id_lookahead_wp].y,
+                    self.current_waypoints[self.id_lookahead_wp].x,
+                    self.current_waypoints[self.id_lookahead_wp].y,
                 ),
                 (
-                    self.current_waypoints[id_lookahead_wp - 1].x,
-                    self.current_waypoints[id_lookahead_wp - 1].y,
-                ),
-            )
-            # print("Intersections: ", intersections)
-
-            if len(intersections) == 2:
-                # print("2 intersections")
-                # Choose the waypoint that is closer to the lookahead wp
-                d1 = np.sqrt(
-                    (
-                        (intersections[0][0] - lookahead_wp.x) ** 2
-                        + (intersections[0][1] - lookahead_wp.y) ** 2
-                    )
-                )
-                d2 = np.sqrt(
-                    (
-                        (intersections[1][0] - lookahead_wp.x) ** 2
-                        + (intersections[1][1] - lookahead_wp.y) ** 2
-                    )
-                )
-
-            # Add something to only run if we received input topics recently
-
-            # Find lookahead waypoint = First waypoint further than lookahead distance and in front of vehicle
-            lookahead_wp, id_lookahead_wp = self.getNextWaypoint()
-
-            # print("Lookahead wp: ")
-            # print("(x, y): ", str(lookahead_wp.x) + ", " + str(lookahead_wp.y))
-
-            # print("Current pose: ")
-            # print(
-            #     "(x, y, yaw): ",
-            #     str(self.current_state.x)
-            #     + ", "
-            #     + str(self.current_state.y)
-            #     + ", "
-            #     + str(self.current_state.track_angle_deg),
-            # )
-
-            # Get target waypoint - Linear interpolation between lookahead waypoint and waypoint before it
-            # Equation linear equation: "ax + by + c = 0"
-            # if there are two points (x1,y1) , (x2,y2), a = "y2-y1, b = "(-1) * x2 - x1" ,c = "(-1) * (y2-y1)x1 + (x2-x1)y1"
-            a, b, c = self.getLinearEquation(
-                self.current_waypoints[id_lookahead_wp],
-                self.current_waypoints[id_lookahead_wp - 1],
-            )
-            # print("Line equation: ", a, b, c)
-
-            # Compute distance to line
-            # d = self.getDistanceBetweenLineAndPoint(a, b, c)
-            # print 'Distance to line: ', d
-
-            # Find intersection between line and circle around vehicle
-            intersections = self.circle_line_segment_intersection(
-                (self.current_state.x, self.current_state.y),
-                self.lookahead_distance,
-                (
-                    self.current_waypoints[id_lookahead_wp].x,
-                    self.current_waypoints[id_lookahead_wp].y,
-                ),
-                (
-                    self.current_waypoints[id_lookahead_wp - 1].x,
-                    self.current_waypoints[id_lookahead_wp - 1].y,
+                    self.current_waypoints[self.id_lookahead_wp - 1].x,
+                    self.current_waypoints[self.id_lookahead_wp - 1].y,
                 ),
             )
             # print("Intersections: ", intersections)
@@ -663,6 +606,40 @@ class Controller:
         self.last_y = self.current_state.y
         self.last_track_angle_deg = self.current_state.track_angle_deg
 
+    def animate_from_scratch(self, i):
+        if self.current_state.x != 0 and self.current_state.y != 0:
+            plt.clf()
+            for state in self.last_n_states:
+                plt.scatter(state.x, state.y)
+
+            plt.arrow(
+                self.current_state.x,
+                self.current_state.y,
+                np.cos(self.current_state.track_angle_deg),
+                np.sin(self.current_state.track_angle_deg),
+                head_width=0.03,
+                head_length=0.1,
+                length_includes_head=True,
+                width=0.01,
+                color="black",
+            )
+            plt.arrow(
+                self.current_state.x,
+                self.current_state.y,
+                np.cos(self.current_state.track_angle_deg + math.pi / 2),
+                np.sin(self.current_state.track_angle_deg + math.pi / 2),
+                head_width=0.03,
+                head_length=0.1,
+                length_includes_head=True,
+                width=0.01,
+                color="black",
+            )
+            plt.axis("equal")
+            for i in range(self.id_lookahead_wp - 3, self.id_lookahead_wp + 5):
+                plt.scatter(
+                    self.current_waypoints[i].x, self.current_waypoints[i].y, color="k"
+                )
+
 
 if __name__ == "__main__":
     try:
@@ -670,7 +647,7 @@ if __name__ == "__main__":
         controller = Controller()
         controller.prepare_map()
 
-        ni = FuncAnimation(plt.gcf(), controller.animate, interval=50)
+        ni = FuncAnimation(plt.gcf(), controller.animate_from_scratch, interval=50)
         plt.axis("equal")
         plt.show()
 
