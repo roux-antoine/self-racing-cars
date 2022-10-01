@@ -23,7 +23,7 @@ class Controller:
 
         # Parameters
         topic_current_state = rospy.get_param("~topic_current_state", "vehicle_state")
-        self.lookahead_distance = rospy.get_param("~lookahead_distance", 2.5)
+        self.lookahead_distance = rospy.get_param("~lookahead_distance", 10)
         self.wheel_base = rospy.get_param("~wheel_base", 1)
         self.max_curvature = rospy.get_param("~max_curvature", 100000)
         self.min_curvature = rospy.get_param("~min_curvature", 0.3)
@@ -31,25 +31,27 @@ class Controller:
         # self.frequency          = rospy.get_param('~frequency', 2.0)
         # self.rate               = rospy.Rate(self.frequency)
         # self.rate_init          = rospy.Rate(1.0)   # Rate while we wait for topic
-        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/grattan_street_waypoints.txt"
-        edges_file = "/home/mattia/catkin_ws/src/controller/src/grattan_edges.txt"
+        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
+        # edges_file = "/home/mattia/catkin_ws/src/controller/src/grattan_edges.txt"
 
-        # Subscribers
-        rospy.Subscriber(topic_current_state, VehicleState, self.callback_current_state)
-
-        # Publishers
-        self.pub_vehicle_cmd = rospy.Publisher(
-            "vehicle_cmd", VehicleCommand, queue_size=10
-        )
+        self.PAST_STATES_WINDOW_SIZE = 20
+        self.X_AXIS_LIM = 15
+        self.Y_AXIS_LIM = 15
+        self.WAYPOINTS_BEHIND_NBR = 3
+        self.WAYPOINTS_AFTER_NBR = 5
+        self.COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
         # Initial values
         self.current_state = VehicleState(0, 0, 0, 0, 0, 0, 0)
-        self.last_n_states = []
+        self.past_n_states = []
+
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111)
 
         # Test
-        test_fake_wp = False
+        TEST_FAKE_WAYPOINTS = False
 
-        if test_fake_wp:
+        if TEST_FAKE_WAYPOINTS:
             self.current_waypoints = [
                 Waypoint(0, 0, 0, 0),
                 Waypoint(1, 0, 1, 0),
@@ -59,6 +61,11 @@ class Controller:
                 Waypoint(5, 0, 5, 0),
                 Waypoint(6, 0, 6, 0),
             ]
+            self.current_state = VehicleState()
+            self.current_state.x = 1
+            self.current_state.y = 0
+            self.current_state.z = 0.0
+            self.current_state.angle = 0
 
         else:
             self.waypoints_xs, self.waypoints_ys = self.load_waypoints(wp_file)
@@ -77,19 +84,24 @@ class Controller:
             # self.edges_xs_list, self.edges_ys_list = self.load_edges(edges_file)
             self.edges_xs_list, self.edges_ys_list = [], []
 
-        # Just for testing, while we don't have a state publisher
-        # self.current_state             = VehicleState()
-        # self.current_state.x           = 1
-        # self.current_state.y           = 0
-        # self.current_state.z           = 0.0
-        # self.current_state.track_angle_deg = 0
+            # Subscribers
+            rospy.Subscriber(
+                topic_current_state, VehicleState, self.callback_current_state
+            )
+
+            # Publishers
+            self.pub_vehicle_cmd = rospy.Publisher(
+                "vehicle_cmd", VehicleCommand, queue_size=10
+            )
+
+    # ##################### PURE PURSUIT FUNCTIONS #####################
 
     def callback_current_state(self, msg):
 
         self.current_state = msg
-        self.last_n_states.append(self.current_state)
-        if len(self.last_n_states) > self.past_states_window_size:
-            self.last_n_states.pop(0)
+        self.past_n_states.append(self.current_state)
+        if len(self.past_n_states) > self.PAST_STATES_WINDOW_SIZE:
+            self.state_to_unscatter = self.past_n_states.pop(0)
 
         # while (self.current_waypoints == None or self.current_state == None) and not rospy.is_shutdown():
         #     rospy.logwarn('Waiting for topics ...')
@@ -103,7 +115,7 @@ class Controller:
             # Add something to only run if we received input topics recently
 
             # Find lookahead waypoint = First waypoint further than lookahead distance and in front of vehicle
-            lookahead_wp, self.id_lookahead_wp = self.getNextWaypoint()
+            self.lookahead_wp, self.id_lookahead_wp = self.getNextWaypoint()
 
             # print("Lookahead wp: ")
             # print("(x, y): ", str(lookahead_wp.x) + ", " + str(lookahead_wp.y))
@@ -115,7 +127,7 @@ class Controller:
             #     + ", "
             #     + str(self.current_state.y)
             #     + ", "
-            #     + str(self.current_state.track_angle_deg),
+            #     + str(self.current_state.angle),
             # )
 
             # Get target waypoint - Linear interpolation between lookahead waypoint and waypoint before it
@@ -151,203 +163,112 @@ class Controller:
                 # Choose the waypoint that is closer to the lookahead wp
                 d1 = np.sqrt(
                     (
-                        (intersections[0][0] - lookahead_wp.x) ** 2
-                        + (intersections[0][1] - lookahead_wp.y) ** 2
+                        (intersections[0][0] - self.lookahead_wp.x) ** 2
+                        + (intersections[0][1] - self.lookahead_wp.y) ** 2
                     )
                 )
                 d2 = np.sqrt(
                     (
-                        (intersections[1][0] - lookahead_wp.x) ** 2
-                        + (intersections[1][1] - lookahead_wp.y) ** 2
+                        (intersections[1][0] - self.lookahead_wp.x) ** 2
+                        + (intersections[1][1] - self.lookahead_wp.y) ** 2
                     )
                 )
 
                 if d1 < d2:
-                    # Put id = 100 as a test, but maybe change
-                    target_wp = Waypoint(
-                        100, intersections[0][0], intersections[0][1], 0
+                    # Set the target waypoint id as -1
+                    self.target_wp = Waypoint(
+                        -1, intersections[0][0], intersections[0][1], 0
                     )
                 else:
-                    target_wp = Waypoint(
-                        100, intersections[1][0], intersections[1][1], 0
+                    self.target_wp = Waypoint(
+                        -1, intersections[1][0], intersections[1][1], 0
                     )
 
             elif len(intersections) == 1:
                 # If only one intersection, maybe the target waypoint should be the lookahead waypoint
                 # print("1 intersection")
-                target_wp = lookahead_wp
+                self.target_wp = self.lookahead_wp
 
             else:
                 # print("0 intersection")
-                target_wp = lookahead_wp
+                self.target_wp = self.lookahead_wp
 
             # print("target_wp: ", target_wp)
 
             # Compute curvature between vehicle and target waypoint
-            curvature = self.ComputeCurvature(target_wp)
+            self.curvature = self.ComputeCurvature(self.target_wp)
 
             # print("radius: ", 1 / curvature)
             # print("curvature: ", curvature)
             #
             # Convert curvature into steering angle
-            steering_angle = self.ConvertCurvatureToSteeringAngle(curvature)
+            self.steering_angle = self.ConvertCurvatureToSteeringAngle(self.curvature)
 
             # Publish cmd
-            # self.PublishVehicleCmd(steering_angle)
+
+            self.publish_vehicle_cmd()
 
             # print("Steering: ", steering_angle)
 
             show_plot = False
 
             if show_plot:
-                # Plotting
-                # Robot's position
-                plt.plot(self.current_state.x, self.current_state.y, "r+", label="car")
+                pass
+                # car_vector = np.array(
+                #     [
+                #         self.wheel_base
+                #         * np.cos(self.current_state.angle + np.pi / 2),
+                #         self.wheel_base
+                #         * np.sin(self.current_state.angle + np.pi / 2),
+                #     ]
+                # )
 
-                # Lookahead waypoint
-                plt.plot(
-                    lookahead_wp.x, lookahead_wp.y, "bo", label="lookahead waypoint"
-                )
-                # Target waypoint
+                # car2target_vector = np.array(
+                #     [
+                #         (self.target_wp.x - self.current_state.x),
+                #         self.target_wp.y - self.current_state.y,
+                #     ]
+                # )
 
-                plt.plot(target_wp.x, target_wp.y, "go", label="target waypoint")
+                # # Car's direction
+                # plt.arrow(
+                #     self.current_state.x,
+                #     self.current_state.y,
+                #     car_vector[0],
+                #     car_vector[1],
+                #     head_width=0.03,
+                #     head_length=0.1,
+                #     length_includes_head=True,
+                #     width=0.01,
+                #     color="blue",
+                # )
 
-                # Steering angle direction
-                plt.arrow(
-                    self.current_state.x,
-                    self.current_state.y,
-                    np.cos(
-                        steering_angle + np.pi / 2 + self.current_state.track_angle_deg
-                    )
-                    / 5,
-                    np.sin(
-                        steering_angle + np.pi / 2 + self.current_state.track_angle_deg
-                    )
-                    / 5,
-                    head_width=0.03,
-                    head_length=0.1,
-                    length_includes_head=True,
-                    width=0.01,
-                    color="red",
-                )
+                # # Car 2 target direction
+                # plt.arrow(
+                #     self.current_state.x,
+                #     self.current_state.y,
+                #     car2target_vector[0],
+                #     car2target_vector[1],
+                #     head_width=0.03,
+                #     head_length=0.1,
+                #     length_includes_head=True,
+                #     width=0.01,
+                #     color="green",
+                # )
 
-                # Car frame direction
-                plt.arrow(
-                    self.current_state.x,
-                    self.current_state.y,
-                    np.cos(self.current_state.track_angle_deg),
-                    np.sin(self.current_state.track_angle_deg),
-                    head_width=0.03,
-                    head_length=0.1,
-                    length_includes_head=True,
-                    width=0.01,
-                    color="black",
-                )
-                plt.arrow(
-                    self.current_state.x,
-                    self.current_state.y,
-                    np.cos(self.current_state.track_angle_deg + math.pi / 2),
-                    np.sin(self.current_state.track_angle_deg + math.pi / 2),
-                    head_width=0.03,
-                    head_length=0.1,
-                    length_includes_head=True,
-                    width=0.01,
-                    color="black",
-                )
-
-                car_vector = np.array(
-                    [
-                        self.wheel_base
-                        * np.cos(self.current_state.track_angle_deg + np.pi / 2),
-                        self.wheel_base
-                        * np.sin(self.current_state.track_angle_deg + np.pi / 2),
-                    ]
-                )
-
-                car2target_vector = np.array(
-                    [
-                        (target_wp.x - self.current_state.x),
-                        target_wp.y - self.current_state.y,
-                    ]
-                )
-
-                # Circle around the car
-                circle_ego = plt.Circle(
-                    (self.current_state.x, self.current_state.y),
-                    self.lookahead_distance,
-                    color="r",
-                    fill=False,
-                    label="Lookahead radius around car",
-                )
-                plt.gca().add_patch(circle_ego)
-
-                # Car's direction
-                plt.arrow(
-                    self.current_state.x,
-                    self.current_state.y,
-                    car_vector[0],
-                    car_vector[1],
-                    head_width=0.03,
-                    head_length=0.1,
-                    length_includes_head=True,
-                    width=0.01,
-                    color="blue",
-                )
-
-                # Car 2 target direction
-                plt.arrow(
-                    self.current_state.x,
-                    self.current_state.y,
-                    car2target_vector[0],
-                    car2target_vector[1],
-                    head_width=0.03,
-                    head_length=0.1,
-                    length_includes_head=True,
-                    width=0.01,
-                    color="green",
-                )
-
-                # To plot waypoints
-                list_wp_x, list_wp_y = [], []
-                for wp in self.current_waypoints:
-                    list_wp_x.append(wp.x)
-                    list_wp_y.append(wp.y)
-                plt.plot(list_wp_x, list_wp_y, "b+", label="waypoints")
-
-                # Coordinates center of circle to follow
-                x_circle = self.current_state.x - (1 / curvature) * np.cos(
-                    self.current_state.track_angle_deg
-                )
-                y_circle = self.current_state.y - (1 / curvature) * np.sin(
-                    self.current_state.track_angle_deg
-                )
-
-                # Circle to follow
-                circle = plt.Circle(
-                    (x_circle, y_circle),
-                    (1 / curvature),
-                    color="b",
-                    fill=False,
-                    label="Arc to follow",
-                )
-                plt.gca().add_patch(circle)
-
-                plt.legend()
-                plt.axis("equal")
-                plt.grid()
-                plt.show()
+                # plt.legend()
+                # plt.axis("equal")
+                # plt.grid()
+                # plt.show()
 
         # self.rate.sleep()
-
-    # def callback_current_state(self, msg):
-    #     self.current_state = msg
 
     def getNextWaypoint(self):
         # Returns the first waypoint that is further than lookahead distance
 
         # Find the closest waypoint
         d_min = 10000
-        wp_closest_id = 0
+        wp_closest_id = None
 
         for wp in self.current_waypoints:
             d = self.getPlaneDistance(wp, self.current_state)
@@ -355,10 +276,28 @@ class Controller:
                 d_min = d
                 wp_closest_id = wp.id
 
+        # TODO we should implement some logic to make sure that the closest waypoint is notbefore the previous closest waypoint
+
+        # if no closest waypoint was found, should never happen
+        if wp_closest_id is None:
+            print("ERROR no waypoint found")
+            # TODO improve the logic!
+            return self.current_waypoints[-1], self.current_waypoints[-1].id
+
+        # if the closest waypoint is the last one, return it  # TODO improve the logic
+        if wp_closest_id == self.current_waypoints[-1].id:
+            return self.current_waypoints[-1], self.current_waypoints[-1].id
+
         # Iterate through all the waypoints starting from the closest + 1
         for wp in self.current_waypoints[wp_closest_id + 1 :]:
             if self.getPlaneDistance(wp, self.current_state) > self.lookahead_distance:
                 return wp, wp.id
+
+        # if we are here, it means that all the waypoints behind the closest one are inside the lookahead distance
+        # it could be because the lookahead distance is not at a "good" value
+        # in this case, we return the last waypoint  # TODO improve
+        print("ERROR all waypoints considered are within the lookahead distance")
+        return self.current_waypoints[-1], self.current_waypoints[-1].id
 
     def getPlaneDistance(self, current_wp, current_state):
         # Inputs:
@@ -385,7 +324,7 @@ class Controller:
 
         diff_x = target.x - current_pose.x
         diff_y = target.y - current_pose.y
-        yaw = current_pose.track_angle_deg
+        yaw = current_pose.angle
 
         cos_pose = math.cos(yaw)
         sin_pose = math.sin(yaw)
@@ -403,10 +342,8 @@ class Controller:
 
         car_vector = np.array(
             [
-                self.wheel_base
-                * np.cos(self.current_state.track_angle_deg + np.pi / 2),
-                self.wheel_base
-                * np.sin(self.current_state.track_angle_deg + np.pi / 2),
+                self.wheel_base * np.cos(self.current_state.angle + np.pi / 2),
+                self.wheel_base * np.sin(self.current_state.angle + np.pi / 2),
             ]
         )
 
@@ -442,13 +379,6 @@ class Controller:
         #   - steering wheel angle (radians) using a simple bicycle model
 
         return np.arctan(curvature * self.wheel_base)
-
-    def PublishVehicleCmd(self, steering_angle):
-        cmd_msg = VehicleCommand()
-        cmd_msg.steering_angle = steering_angle
-        cmd_msg.throttle_angle = 0
-
-        self.pub_vehicle_cmd.publish(cmd_msg)
 
     def getLinearEquation(self, pt_a, pt_b):
 
@@ -503,10 +433,10 @@ class Controller:
                     cy + (-big_d * dx + sign * abs(dy) * discriminant**0.5) / dr**2,
                 )
                 for sign in ((1, -1) if dy < 0 else (-1, 1))
-            ]  # This makes sure the order along the segment is correct
-            if (
-                not full_line
-            ):  # If only considering the segment, filter out intersections that do not fall within the segment
+            ]
+            # This makes sure the order along the segment is correct
+            if not full_line:
+                # If only considering the segment, filter out intersections that do not fall within the segment
                 fraction_along_segment = [
                     (xi - p1x) / dx if abs(dx) > abs(dy) else (yi - p1y) / dy
                     for xi, yi in intersections
@@ -516,12 +446,21 @@ class Controller:
                     for pt, frac in zip(intersections, fraction_along_segment)
                     if 0 <= frac <= 1
                 ]
-            if (
-                len(intersections) == 2 and abs(discriminant) <= tangent_tol
-            ):  # If line is tangent to circle, return just one point (as both intersections have same location)
+            if len(intersections) == 2 and abs(discriminant) <= tangent_tol:
+                # If line is tangent to circle, return just one point (as both intersections have same location)
                 return [intersections[0]]
             else:
                 return intersections
+
+    # ##################### MISC #####################
+
+    def publish_vehicle_cmd(self):
+        # TODO add some logic to map it to the correct range
+        cmd_msg = VehicleCommand()
+        cmd_msg.steering_angle = 0  # self.steering_angle
+        cmd_msg.throttle_angle = 0
+
+        self.pub_vehicle_cmd.publish(cmd_msg)
 
     def load_waypoints(self, file):
 
@@ -558,88 +497,159 @@ class Controller:
 
         return edges_xs_list, edges_ys_list
 
+    # ##################### PLOTTING UTILITIES #####################
+
+    def plot_car_frame(self):
+        self.ax.arrow(
+            self.current_state.x,
+            self.current_state.y,
+            np.cos(self.current_state.angle),
+            np.sin(self.current_state.angle),
+            head_width=0.03,
+            head_length=0.1,
+            length_includes_head=True,
+            width=0.01,
+            color="gray",
+        )
+        self.ax.arrow(
+            self.current_state.x,
+            self.current_state.y,
+            np.cos(self.current_state.angle + math.pi / 2),
+            np.sin(self.current_state.angle + math.pi / 2),
+            head_width=0.03,
+            head_length=0.1,
+            length_includes_head=True,
+            width=0.01,
+            color="black",
+        )
+
+    def plot_trajectory_cicle(self):
+        x_circle = self.current_state.x - (1 / self.curvature) * np.cos(
+            self.current_state.angle
+        )
+        y_circle = self.current_state.y - (1 / self.curvature) * np.sin(
+            self.current_state.angle
+        )
+
+        trajectory_circle = plt.Circle(
+            (x_circle, y_circle),
+            (1 / self.curvature),
+            color="b",
+            fill=False,
+            label="Arc to follow",
+        )
+        self.ax.add_patch(trajectory_circle)
+
+    def plot_steering_angle(self):
+        self.ax.arrow(
+            self.current_state.x,
+            self.current_state.y,
+            np.cos(self.steering_angle + np.pi / 2 + self.current_state.angle),
+            np.sin(self.steering_angle + np.pi / 2 + self.current_state.angle),
+            head_width=0.03,
+            head_length=0.1,
+            length_includes_head=True,
+            width=0.01,
+            color="red",
+        )
+
     def prepare_map(self):
 
-        plt.scatter(self.waypoints_xs, self.waypoints_ys)
+        self.ax.scatter(self.waypoints_xs, self.waypoints_ys)
 
         for id, x, y in zip(
             list(range(len(self.waypoints_xs))), self.waypoints_xs, self.waypoints_ys
         ):
-            plt.annotate(id, (x, y))
+            self.ax.annotate(id, (x, y))
 
         for edges_xs, edges_ys in zip(self.edges_xs_list, self.edges_ys_list):
-            plt.plot(edges_xs, edges_ys)
+            self.ax.plot(edges_xs, edges_ys)
 
     def animate(self, i):
         if self.current_state.x != 0 and self.current_state.y != 0:
-            if (
-                self.last_x != self.current_state.x
-                or self.last_y != self.current_state.y
-            ):
+            self.ax.scatter(self.current_state.x, self.current_state.y)
 
-                plt.scatter(self.current_state.x, self.current_state.y)
+            # Car frame direction
+            self.plot_car_frame()
 
-                # Car frame direction
-                plt.arrow(
-                    self.current_state.x,
-                    self.current_state.y,
-                    np.cos(self.current_state.track_angle_deg),
-                    np.sin(self.current_state.track_angle_deg),
-                    head_width=0.03,
-                    head_length=0.1,
-                    length_includes_head=True,
-                    width=0.01,
-                    color="black",
-                )
-                plt.arrow(
-                    self.current_state.x,
-                    self.current_state.y,
-                    np.cos(self.current_state.track_angle_deg + math.pi / 2),
-                    np.sin(self.current_state.track_angle_deg + math.pi / 2),
-                    head_width=0.03,
-                    head_length=0.1,
-                    length_includes_head=True,
-                    width=0.01,
-                    color="black",
-                )
         self.last_x = self.current_state.x
         self.last_y = self.current_state.y
-        self.last_track_angle_deg = self.current_state.track_angle_deg
+        self.last_angle = self.current_state.angle
 
-    def animate_from_scratch(self, i):
+    def plot_states_etc(self, _):
+
         if self.current_state.x != 0 and self.current_state.y != 0:
-            plt.clf()
-            for state in self.last_n_states:
-                plt.scatter(state.x, state.y)
+            plt.cla()
 
-            plt.arrow(
-                self.current_state.x,
-                self.current_state.y,
-                np.cos(self.current_state.track_angle_deg),
-                np.sin(self.current_state.track_angle_deg),
-                head_width=0.03,
-                head_length=0.1,
-                length_includes_head=True,
-                width=0.01,
-                color="black",
-            )
-            plt.arrow(
-                self.current_state.x,
-                self.current_state.y,
-                np.cos(self.current_state.track_angle_deg + math.pi / 2),
-                np.sin(self.current_state.track_angle_deg + math.pi / 2),
-                head_width=0.03,
-                head_length=0.1,
-                length_includes_head=True,
-                width=0.01,
-                color="black",
-            )
-            plt.axis("equal")
-            for i in range(self.id_lookahead_wp - 3, self.id_lookahead_wp + 5):
-                plt.scatter(
-                    self.current_waypoints[i].x, self.current_waypoints[i].y, color="k"
+            # Previous car locations
+            for idx in range(len(self.past_n_states) - 1):
+                if idx > len(self.COLOR_CYCLE) - 1:
+                    color = color = self.COLOR_CYCLE[idx + 1 - len(self.past_n_states)]
+                else:
+                    color = "gray"
+                self.ax.scatter(
+                    self.past_n_states[idx].x, self.past_n_states[idx].y, color=color
                 )
 
+            # Car location, car frame and steering angle
+            self.ax.scatter(
+                self.current_state.x, self.current_state.y, color=self.COLOR_CYCLE[0]
+            )
+            self.plot_car_frame()
+            self.plot_steering_angle()
+
+            # Lookahead waypoint
+            self.ax.scatter(
+                self.lookahead_wp.x,
+                self.lookahead_wp.y,
+                color="k",
+                label="lookahead waypoint",
+            )
+            # Target waypoint
+            self.ax.scatter(
+                self.target_wp.x, self.target_wp.y, color="r", label="target waypoint"
+            )
+
+            # Lookahead circle
+            lookahead_circle = plt.Circle(
+                (self.current_state.x, self.current_state.y),
+                self.lookahead_distance,
+                color="k",
+                linestyle="--",
+                fill=False,
+                label="Lookahead radius around car",
+            )
+            self.ax.add_patch(lookahead_circle)
+
+            # Trajectory circle
+            self.plot_trajectory_cicle()
+
+            # Waypoints
+            # for idx in range(
+            #     self.id_lookahead_wp - self.WAYPOINTS_BEHIND_NBR,
+            #     self.id_lookahead_wp + self.WAYPOINTS_AFTER_NBR,
+            # ):
+            for idx in range(len(self.current_waypoints)):
+                self.ax.scatter(
+                    self.current_waypoints[idx].x,
+                    self.current_waypoints[idx].y,
+                    color="k",
+                )
+
+            self.ax.grid()
+            self.ax.legend()
+            self.ax.axis("equal")
+            self.ax.set_xlim(
+                self.current_state.x - self.X_AXIS_LIM,
+                self.current_state.x + self.X_AXIS_LIM,
+            )
+            self.ax.set_ylim(
+                self.current_state.y - self.Y_AXIS_LIM,
+                self.current_state.y + self.Y_AXIS_LIM,
+            )
+
+
+# ##################### MAIN #####################
 
 if __name__ == "__main__":
     try:
@@ -647,8 +657,9 @@ if __name__ == "__main__":
         controller = Controller()
         controller.prepare_map()
 
-        ni = FuncAnimation(plt.gcf(), controller.animate_from_scratch, interval=50)
-        plt.axis("equal")
+        ani = FuncAnimation(
+            plt.gcf(), controller.plot_states_etc, interval=50
+        )  # pretty ugly since it makes us rely on the plotting to iterate it seems
         plt.show()
 
     except rospy.ROSInterruptException:
