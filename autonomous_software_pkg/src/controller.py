@@ -18,12 +18,22 @@ class Waypoint:
         self.z = z
 
 
+# TODO:
+# - figure out how to stop at the end
+# - figure out how to do a rolling start if we want
+# - figure out smarter longitudinal control
+# - figure out how the orientation is when the GPS sends the same position twice
+# - figure out if using plot to spin is bad
+
+
 class Controller:
     def __init__(self):
 
         # Parameters
         topic_current_state = rospy.get_param("~topic_current_state", "vehicle_state")
-        self.lookahead_distance = rospy.get_param("~lookahead_distance", 10)
+        self.lookahead_distance = rospy.get_param(
+            "~lookahead_distance", 10
+        )  # max = 40m
         self.wheel_base = rospy.get_param("~wheel_base", 1)
         self.max_curvature = rospy.get_param("~max_curvature", 100000)
         self.min_curvature = rospy.get_param("~min_curvature", 0.3)
@@ -40,6 +50,9 @@ class Controller:
         self.WAYPOINTS_BEHIND_NBR = 3
         self.WAYPOINTS_AFTER_NBR = 5
         self.COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        self.THROTTLE_START_LINE = 10  # TODO improve
+        self.THROTTLE_BASELINE = 20  # TODO improve
+        self.START_LINE_WP_THRESHOLD = 10  # TODO improve
 
         # Initial values
         self.current_state = VehicleState(0, 0, 0, 0, 0, 0, 0)
@@ -112,154 +125,85 @@ class Controller:
         # while not rospy.is_shutdown():
         if True:
 
-            # Add something to only run if we received input topics recently
-
             # Find lookahead waypoint = First waypoint further than lookahead distance and in front of vehicle
             self.lookahead_wp, self.id_lookahead_wp = self.getNextWaypoint()
 
-            # print("Lookahead wp: ")
-            # print("(x, y): ", str(lookahead_wp.x) + ", " + str(lookahead_wp.y))
+            print(self.id_lookahead_wp)
 
-            # print("Current pose: ")
-            # print(
-            #     "(x, y, yaw): ",
-            #     str(self.current_state.x)
-            #     + ", "
-            #     + str(self.current_state.y)
-            #     + ", "
-            #     + str(self.current_state.angle),
-            # )
+            # Figure out if we are at the start line
+            at_start_line = self.id_lookahead_wp < self.START_LINE_WP_THRESHOLD
 
-            # Get target waypoint - Linear interpolation between lookahead waypoint and waypoint before it
-            # Equation linear equation: "ax + by + c = 0"
-            # if there are two points (x1,y1) , (x2,y2), a = "y2-y1, b = "(-1) * x2 - x1" ,c = "(-1) * (y2-y1)x1 + (x2-x1)y1"
-            a, b, c = self.getLinearEquation(
-                self.current_waypoints[self.id_lookahead_wp],
-                self.current_waypoints[self.id_lookahead_wp - 1],
-            )
-            # print("Line equation: ", a, b, c)
+            if not at_start_line:
 
-            # Compute distance to line
-            # d = self.getDistanceBetweenLineAndPoint(a, b, c)
-            # print 'Distance to line: ', d
-
-            # Find intersection between line and circle around vehicle
-            intersections = self.circle_line_segment_intersection(
-                (self.current_state.x, self.current_state.y),
-                self.lookahead_distance,
-                (
-                    self.current_waypoints[self.id_lookahead_wp].x,
-                    self.current_waypoints[self.id_lookahead_wp].y,
-                ),
-                (
-                    self.current_waypoints[self.id_lookahead_wp - 1].x,
-                    self.current_waypoints[self.id_lookahead_wp - 1].y,
-                ),
-            )
-            # print("Intersections: ", intersections)
-
-            if len(intersections) == 2:
-                # print("2 intersections")
-                # Choose the waypoint that is closer to the lookahead wp
-                d1 = np.sqrt(
-                    (
-                        (intersections[0][0] - self.lookahead_wp.x) ** 2
-                        + (intersections[0][1] - self.lookahead_wp.y) ** 2
-                    )
-                )
-                d2 = np.sqrt(
-                    (
-                        (intersections[1][0] - self.lookahead_wp.x) ** 2
-                        + (intersections[1][1] - self.lookahead_wp.y) ** 2
-                    )
+                # Get target waypoint - Linear interpolation between lookahead waypoint and waypoint before it
+                # Equation linear equation: "ax + by + c = 0"
+                # if there are two points (x1,y1) , (x2,y2), a = "y2-y1, b = "(-1) * x2 - x1" ,c = "(-1) * (y2-y1)x1 + (x2-x1)y1"
+                a, b, c = self.getLinearEquation(
+                    self.current_waypoints[self.id_lookahead_wp],
+                    self.current_waypoints[self.id_lookahead_wp - 1],
                 )
 
-                if d1 < d2:
-                    # Set the target waypoint id as -1
-                    self.target_wp = Waypoint(
-                        -1, intersections[0][0], intersections[0][1], 0
+                # Find intersection between line and circle around vehicle
+                intersections = self.circle_line_segment_intersection(
+                    (self.current_state.x, self.current_state.y),
+                    self.lookahead_distance,
+                    (
+                        self.current_waypoints[self.id_lookahead_wp].x,
+                        self.current_waypoints[self.id_lookahead_wp].y,
+                    ),
+                    (
+                        self.current_waypoints[self.id_lookahead_wp - 1].x,
+                        self.current_waypoints[self.id_lookahead_wp - 1].y,
+                    ),
+                )
+
+                if len(intersections) == 2:
+                    # Choose the waypoint that is closer to the lookahead wp
+                    d1 = np.sqrt(
+                        (
+                            (intersections[0][0] - self.lookahead_wp.x) ** 2
+                            + (intersections[0][1] - self.lookahead_wp.y) ** 2
+                        )
                     )
+                    d2 = np.sqrt(
+                        (
+                            (intersections[1][0] - self.lookahead_wp.x) ** 2
+                            + (intersections[1][1] - self.lookahead_wp.y) ** 2
+                        )
+                    )
+
+                    if d1 < d2:
+                        # Set the target waypoint id as -1
+                        self.target_wp = Waypoint(
+                            -1, intersections[0][0], intersections[0][1], 0
+                        )
+                    else:
+                        self.target_wp = Waypoint(
+                            -1, intersections[1][0], intersections[1][1], 0
+                        )
+
+                elif len(intersections) == 1:
+                    # If only one intersection, maybe the target waypoint should be the lookahead waypoint
+                    self.target_wp = self.lookahead_wp
+
                 else:
-                    self.target_wp = Waypoint(
-                        -1, intersections[1][0], intersections[1][1], 0
-                    )
+                    self.target_wp = self.lookahead_wp
 
-            elif len(intersections) == 1:
-                # If only one intersection, maybe the target waypoint should be the lookahead waypoint
-                # print("1 intersection")
-                self.target_wp = self.lookahead_wp
+                # Compute curvature between vehicle and target waypoint
+                self.curvature = self.ComputeCurvature(self.target_wp)
+
+                # Convert curvature into steering angle
+                self.steering_angle = self.ConvertCurvatureToSteeringAngle(
+                    self.curvature
+                )
+                self.throttle = self.THROTTLE_BASELINE
 
             else:
-                # print("0 intersection")
-                self.target_wp = self.lookahead_wp
-
-            # print("target_wp: ", target_wp)
-
-            # Compute curvature between vehicle and target waypoint
-            self.curvature = self.ComputeCurvature(self.target_wp)
-
-            # print("radius: ", 1 / curvature)
-            # print("curvature: ", curvature)
-            #
-            # Convert curvature into steering angle
-            self.steering_angle = self.ConvertCurvatureToSteeringAngle(self.curvature)
+                self.steering_angle = 0
+                self.throttle = self.THROTTLE_START_LINE
 
             # Publish cmd
-
             self.publish_vehicle_cmd()
-
-            # print("Steering: ", steering_angle)
-
-            show_plot = False
-
-            if show_plot:
-                pass
-                # car_vector = np.array(
-                #     [
-                #         self.wheel_base
-                #         * np.cos(self.current_state.angle + np.pi / 2),
-                #         self.wheel_base
-                #         * np.sin(self.current_state.angle + np.pi / 2),
-                #     ]
-                # )
-
-                # car2target_vector = np.array(
-                #     [
-                #         (self.target_wp.x - self.current_state.x),
-                #         self.target_wp.y - self.current_state.y,
-                #     ]
-                # )
-
-                # # Car's direction
-                # plt.arrow(
-                #     self.current_state.x,
-                #     self.current_state.y,
-                #     car_vector[0],
-                #     car_vector[1],
-                #     head_width=0.03,
-                #     head_length=0.1,
-                #     length_includes_head=True,
-                #     width=0.01,
-                #     color="blue",
-                # )
-
-                # # Car 2 target direction
-                # plt.arrow(
-                #     self.current_state.x,
-                #     self.current_state.y,
-                #     car2target_vector[0],
-                #     car2target_vector[1],
-                #     head_width=0.03,
-                #     head_length=0.1,
-                #     length_includes_head=True,
-                #     width=0.01,
-                #     color="green",
-                # )
-
-                # plt.legend()
-                # plt.axis("equal")
-                # plt.grid()
-                # plt.show()
 
         # self.rate.sleep()
 
@@ -275,8 +219,6 @@ class Controller:
             if d < d_min:
                 d_min = d
                 wp_closest_id = wp.id
-
-        # TODO we should implement some logic to make sure that the closest waypoint is notbefore the previous closest waypoint
 
         # if no closest waypoint was found, should never happen
         if wp_closest_id is None:
@@ -294,9 +236,9 @@ class Controller:
                 return wp, wp.id
 
         # if we are here, it means that all the waypoints behind the closest one are inside the lookahead distance
-        # it could be because the lookahead distance is not at a "good" value
-        # in this case, we return the last waypoint  # TODO improve
+        # in this case, we return the last waypoint
         print("ERROR all waypoints considered are within the lookahead distance")
+        # TODO change: implement slowdown
         return self.current_waypoints[-1], self.current_waypoints[-1].id
 
     def getPlaneDistance(self, current_wp, current_state):
@@ -455,10 +397,9 @@ class Controller:
     # ##################### MISC #####################
 
     def publish_vehicle_cmd(self):
-        # TODO add some logic to map it to the correct range
         cmd_msg = VehicleCommand()
-        cmd_msg.steering_angle = 0  # self.steering_angle
-        cmd_msg.throttle_angle = 0
+        cmd_msg.steering_value_rad = self.steering_angle
+        cmd_msg.throttle_value = self.throttle
 
         self.pub_vehicle_cmd.publish(cmd_msg)
 
@@ -544,8 +485,8 @@ class Controller:
         self.ax.arrow(
             self.current_state.x,
             self.current_state.y,
-            np.cos(self.steering_angle + np.pi / 2 + self.current_state.angle),
-            np.sin(self.steering_angle + np.pi / 2 + self.current_state.angle),
+            np.cos(self.steering_angle + np.pi / 2 + self.current_state.angle) * 5,
+            np.sin(self.steering_angle + np.pi / 2 + self.current_state.angle) * 5,
             head_width=0.03,
             head_length=0.1,
             length_includes_head=True,
@@ -602,7 +543,7 @@ class Controller:
             self.ax.scatter(
                 self.lookahead_wp.x,
                 self.lookahead_wp.y,
-                color="k",
+                color="g",
                 label="lookahead waypoint",
             )
             # Target waypoint

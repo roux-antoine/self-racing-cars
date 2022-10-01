@@ -19,7 +19,7 @@ class VehicleStatePublisher:
 
         self.last_state = None
         self.last_msg_seq = None
-        self.JUMPING_MESSAGE_FACTOR = 1
+        self.JUMPING_MESSAGE_FACTOR = 3
 
     def callback(self, rmc_msg):
 
@@ -51,17 +51,21 @@ class VehicleStatePublisher:
         vehicle_state_msg.vy = -1  # TODO project the speed
         vehicle_state_msg.vz = -1  # TODO project the speed
 
-        if self.last_state:
-            diff_x = vehicle_state_msg.x - self.last_state.x
-            diff_y = vehicle_state_msg.y - self.last_state.y
-            angle = math.pi / 2 - math.atan2(
-                diff_y, -diff_x
-            )  # minus sign is a bit of a hack, probably because of the utm coordinates
-            # TODO add some filtering here, but make sure we account for the fact that it loops at 2 pi!
-            vehicle_state_msg.angle = angle
-        else:
-            vehicle_state_msg.angle = 0
+        # computing the angle with a difference
+        # if self.last_state:
+        #     diff_x = vehicle_state_msg.x - self.last_state.x
+        #     diff_y = vehicle_state_msg.y - self.last_state.y
+        #     angle = math.pi / 2 - math.atan2(
+        #         diff_y, -diff_x
+        #     )  # minus sign is a bit of a hack, probably because of the utm coordinates
+        #     # TODO add some filtering here, but make sure we account for the fact that it loops at 2 pi!
+        #     vehicle_state_msg.angle = angle
+        # else:
+        #     vehicle_state_msg.angle = 0
 
+        # using the track angle degree for the angle
+        angle = -rmc_msg.track_angle_deg * math.pi / 180
+        vehicle_state_msg.angle = angle
         self.pub.publish(vehicle_state_msg)
 
         self.last_state = vehicle_state_msg
