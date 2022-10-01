@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 
+import math
+
 import rospy
 import utm
 
@@ -15,7 +17,24 @@ class VehicleStatePublisher:
         self.pub = rospy.Publisher("vehicle_state", VehicleState, queue_size=10)
         self.rate = rospy.Rate(1000)  # 1kHz
 
+        self.last_state = None
+        self.last_msg_seq = None
+        self.JUMPING_MESSAGE_FACTOR = 1
+
     def callback(self, rmc_msg):
+
+        # small logic to skip messages if we want
+        if self.last_msg_seq:
+            if rmc_msg.header.seq - self.last_msg_seq < self.JUMPING_MESSAGE_FACTOR:
+                return
+            else:
+                self.last_msg_seq = rmc_msg.header.seq
+        else:
+            self.last_msg_seq = rmc_msg.header.seq
+
+        # TODO handle the situation where the location is exactly the same as in the previous message
+        # in this case, the best is probably to not publish
+
         # read RMC message
         latitude = rmc_msg.latitude
         longitude = rmc_msg.longitude
@@ -31,17 +50,23 @@ class VehicleStatePublisher:
         vehicle_state_msg.vx = -1  # TODO project the speed
         vehicle_state_msg.vy = -1  # TODO project the speed
         vehicle_state_msg.vz = -1  # TODO project the speed
-        vehicle_state_msg.track_angle_deg = rmc_msg.track_angle_deg
+
+        if self.last_state:
+            diff_x = vehicle_state_msg.x - self.last_state.x
+            diff_y = vehicle_state_msg.y - self.last_state.y
+            angle = math.pi / 2 - math.atan2(
+                diff_y, -diff_x
+            )  # minus sign is a bit of a hack, probably because of the utm coordinates
+            # TODO add some filtering here, but make sure we account for the fact that it loops at 2 pi!
+            vehicle_state_msg.angle = angle
+        else:
+            vehicle_state_msg.angle = 0
 
         self.pub.publish(vehicle_state_msg)
 
-    def loop(self):
-        while not rospy.is_shutdown():
-            # print("hello")
-            self.rate.sleep()
+        self.last_state = vehicle_state_msg
 
 
 if __name__ == "__main__":
     vehicle_state_publisher = VehicleStatePublisher()
-    # vehicle_state_publisher.loop()
     rospy.spin()
