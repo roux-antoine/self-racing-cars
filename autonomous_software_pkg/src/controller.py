@@ -23,19 +23,19 @@ class Controller:
 
         # Parameters
         topic_current_state = rospy.get_param("~topic_current_state", "vehicle_state")
-        self.lookahead_distance = rospy.get_param("~lookahead_distance", 2.5)
+        self.lookahead_distance = rospy.get_param("~lookahead_distance", 15)
         self.wheel_base = rospy.get_param("~wheel_base", 1)
         self.max_curvature = rospy.get_param("~max_curvature", 100000)
         self.min_curvature = rospy.get_param("~min_curvature", 0.3)
         # self.frequency          = rospy.get_param('~frequency', 2.0)
         # self.rate               = rospy.Rate(self.frequency)
         # self.rate_init          = rospy.Rate(1.0)   # Rate while we wait for topic
-        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/grattan_street_waypoints.txt"
+        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
         # edges_file = "/home/mattia/catkin_ws/src/controller/src/grattan_edges.txt"
 
-        self.PAST_STATES_WINDOW_SIZE = 5
-        self.X_AXIS_LIM = 10
-        self.Y_AXIS_LIM = 10
+        self.PAST_STATES_WINDOW_SIZE = 20
+        self.X_AXIS_LIM = 15
+        self.Y_AXIS_LIM = 15
         self.WAYPOINTS_BEHIND_NBR = 3
         self.WAYPOINTS_AFTER_NBR = 5
         self.COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
@@ -72,7 +72,7 @@ class Controller:
             self.current_state.x = 1
             self.current_state.y = 0
             self.current_state.z = 0.0
-            self.current_state.track_angle_deg = 0
+            self.current_state.angle = 0
 
         else:
             self.waypoints_xs, self.waypoints_ys = self.load_waypoints(wp_file)
@@ -124,7 +124,7 @@ class Controller:
             #     + ", "
             #     + str(self.current_state.y)
             #     + ", "
-            #     + str(self.current_state.track_angle_deg),
+            #     + str(self.current_state.angle),
             # )
 
             # Get target waypoint - Linear interpolation between lookahead waypoint and waypoint before it
@@ -213,9 +213,9 @@ class Controller:
                 # car_vector = np.array(
                 #     [
                 #         self.wheel_base
-                #         * np.cos(self.current_state.track_angle_deg + np.pi / 2),
+                #         * np.cos(self.current_state.angle + np.pi / 2),
                 #         self.wheel_base
-                #         * np.sin(self.current_state.track_angle_deg + np.pi / 2),
+                #         * np.sin(self.current_state.angle + np.pi / 2),
                 #     ]
                 # )
 
@@ -302,7 +302,7 @@ class Controller:
 
         diff_x = target.x - current_pose.x
         diff_y = target.y - current_pose.y
-        yaw = current_pose.track_angle_deg
+        yaw = current_pose.angle
 
         cos_pose = math.cos(yaw)
         sin_pose = math.sin(yaw)
@@ -320,10 +320,8 @@ class Controller:
 
         car_vector = np.array(
             [
-                self.wheel_base
-                * np.cos(self.current_state.track_angle_deg + np.pi / 2),
-                self.wheel_base
-                * np.sin(self.current_state.track_angle_deg + np.pi / 2),
+                self.wheel_base * np.cos(self.current_state.angle + np.pi / 2),
+                self.wheel_base * np.sin(self.current_state.angle + np.pi / 2),
             ]
         )
 
@@ -483,19 +481,19 @@ class Controller:
         self.ax.arrow(
             self.current_state.x,
             self.current_state.y,
-            np.cos(self.current_state.track_angle_deg),
-            np.sin(self.current_state.track_angle_deg),
+            np.cos(self.current_state.angle),
+            np.sin(self.current_state.angle),
             head_width=0.03,
             head_length=0.1,
             length_includes_head=True,
             width=0.01,
-            color="black",
+            color="gray",
         )
         self.ax.arrow(
             self.current_state.x,
             self.current_state.y,
-            np.cos(self.current_state.track_angle_deg + math.pi / 2),
-            np.sin(self.current_state.track_angle_deg + math.pi / 2),
+            np.cos(self.current_state.angle + math.pi / 2),
+            np.sin(self.current_state.angle + math.pi / 2),
             head_width=0.03,
             head_length=0.1,
             length_includes_head=True,
@@ -505,10 +503,10 @@ class Controller:
 
     def plot_trajectory_cicle(self):
         x_circle = self.current_state.x - (1 / self.curvature) * np.cos(
-            self.current_state.track_angle_deg
+            self.current_state.angle
         )
         y_circle = self.current_state.y - (1 / self.curvature) * np.sin(
-            self.current_state.track_angle_deg
+            self.current_state.angle
         )
 
         trajectory_circle = plt.Circle(
@@ -524,10 +522,8 @@ class Controller:
         self.ax.arrow(
             self.current_state.x,
             self.current_state.y,
-            np.cos(self.steering_angle + np.pi / 2 + self.current_state.track_angle_deg)
-            / 5,
-            np.sin(self.steering_angle + np.pi / 2 + self.current_state.track_angle_deg)
-            / 5,
+            np.cos(self.steering_angle + np.pi / 2 + self.current_state.angle),
+            np.sin(self.steering_angle + np.pi / 2 + self.current_state.angle),
             head_width=0.03,
             head_length=0.1,
             length_includes_head=True,
@@ -556,17 +552,22 @@ class Controller:
 
         self.last_x = self.current_state.x
         self.last_y = self.current_state.y
-        self.last_track_angle_deg = self.current_state.track_angle_deg
+        self.last_angle = self.current_state.angle
 
     def plot_states_etc(self, _):
 
         if self.current_state.x != 0 and self.current_state.y != 0:
             plt.cla()
+            print(self.current_state.angle)
 
             # Previous car locations
-            for idx, past_state in reversed(list(enumerate(self.past_n_states[:-1]))):
+            for idx in range(len(self.past_n_states) - 1):
+                if idx > len(self.COLOR_CYCLE) - 1:
+                    color = color = self.COLOR_CYCLE[idx + 1 - len(self.past_n_states)]
+                else:
+                    color = "gray"
                 self.ax.scatter(
-                    past_state.x, past_state.y, color=self.COLOR_CYCLE[idx + 1]
+                    self.past_n_states[idx].x, self.past_n_states[idx].y, color=color
                 )
 
             # Car location, car frame and steering angle
@@ -585,7 +586,7 @@ class Controller:
             )
             # Target waypoint
             self.ax.scatter(
-                self.target_wp.x, self.target_wp.y, color="k", label="target waypoint"
+                self.target_wp.x, self.target_wp.y, color="r", label="target waypoint"
             )
 
             # Lookahead circle
@@ -603,16 +604,18 @@ class Controller:
             self.plot_trajectory_cicle()
 
             # Waypoints
-            for idx in range(
-                self.id_lookahead_wp - self.WAYPOINTS_BEHIND_NBR,
-                self.id_lookahead_wp + self.WAYPOINTS_AFTER_NBR,
-            ):
+            # for idx in range(
+            #     self.id_lookahead_wp - self.WAYPOINTS_BEHIND_NBR,
+            #     self.id_lookahead_wp + self.WAYPOINTS_AFTER_NBR,
+            # ):
+            for idx in range(len(self.current_waypoints)):
                 self.ax.scatter(
                     self.current_waypoints[idx].x,
                     self.current_waypoints[idx].y,
                     color="k",
                 )
 
+            self.ax.grid()
             self.ax.legend()
             self.ax.axis("equal")
             self.ax.set_xlim(
