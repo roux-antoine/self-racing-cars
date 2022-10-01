@@ -19,7 +19,7 @@ class VehicleStatePublisher:
 
         self.last_state = None
         self.last_msg_seq = None
-        self.JUMPING_MESSAGE_FACTOR = 3
+        self.JUMPING_MESSAGE_FACTOR = 1
 
     def callback(self, rmc_msg):
 
@@ -31,6 +31,9 @@ class VehicleStatePublisher:
                 self.last_msg_seq = rmc_msg.header.seq
         else:
             self.last_msg_seq = rmc_msg.header.seq
+
+        # TODO handle the situation where the location is exactly the same as in the previous message
+        # in this case, the best is probably to not publish
 
         # read RMC message
         latitude = rmc_msg.latitude
@@ -51,7 +54,6 @@ class VehicleStatePublisher:
         if self.last_state:
             diff_x = vehicle_state_msg.x - self.last_state.x
             diff_y = vehicle_state_msg.y - self.last_state.y
-            # print(diff_x, diff_y)
             angle = math.pi / 2 - math.atan2(
                 diff_y, -diff_x
             )  # minus sign is a bit of a hack, probably because of the utm coordinates

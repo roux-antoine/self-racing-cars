@@ -23,7 +23,7 @@ class Controller:
 
         # Parameters
         topic_current_state = rospy.get_param("~topic_current_state", "vehicle_state")
-        self.lookahead_distance = rospy.get_param("~lookahead_distance", 15)
+        self.lookahead_distance = rospy.get_param("~lookahead_distance", 10)
         self.wheel_base = rospy.get_param("~wheel_base", 1)
         self.max_curvature = rospy.get_param("~max_curvature", 100000)
         self.min_curvature = rospy.get_param("~min_curvature", 0.3)
@@ -39,14 +39,6 @@ class Controller:
         self.WAYPOINTS_BEHIND_NBR = 3
         self.WAYPOINTS_AFTER_NBR = 5
         self.COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
-        # Subscribers
-        rospy.Subscriber(topic_current_state, VehicleState, self.callback_current_state)
-
-        # Publishers
-        self.pub_vehicle_cmd = rospy.Publisher(
-            "vehicle_cmd", VehicleCommand, queue_size=10
-        )
 
         # Initial values
         self.current_state = VehicleState(0, 0, 0, 0, 0, 0, 0)
@@ -90,6 +82,16 @@ class Controller:
 
             # self.edges_xs_list, self.edges_ys_list = self.load_edges(edges_file)
             self.edges_xs_list, self.edges_ys_list = [], []
+
+            # Subscribers
+            rospy.Subscriber(
+                topic_current_state, VehicleState, self.callback_current_state
+            )
+
+            # Publishers
+            self.pub_vehicle_cmd = rospy.Publisher(
+                "vehicle_cmd", VehicleCommand, queue_size=10
+            )
 
     # ##################### PURE PURSUIT FUNCTIONS #####################
 
@@ -202,7 +204,8 @@ class Controller:
             self.steering_angle = self.ConvertCurvatureToSteeringAngle(self.curvature)
 
             # Publish cmd
-            # self.publish_vehicle_cmd(steering_angle)
+
+            self.publish_vehicle_cmd()
 
             # print("Steering: ", steering_angle)
 
@@ -264,7 +267,7 @@ class Controller:
 
         # Find the closest waypoint
         d_min = 10000
-        wp_closest_id = 0
+        wp_closest_id = None
 
         for wp in self.current_waypoints:
             d = self.getPlaneDistance(wp, self.current_state)
@@ -272,10 +275,28 @@ class Controller:
                 d_min = d
                 wp_closest_id = wp.id
 
+        # TODO we should implement some logic to make sure that the closest waypoint is notbefore the previous closest waypoint
+
+        # if no closest waypoint was found, should never happen
+        if wp_closest_id is None:
+            print("ERROR no waypoint found")
+            # TODO improve the logic!
+            return self.current_waypoints[-1], self.current_waypoints[-1].id
+
+        # if the closest waypoint is the last one, return it  # TODO improve the logic
+        if wp_closest_id == self.current_waypoints[-1].id:
+            return self.current_waypoints[-1], self.current_waypoints[-1].id
+
         # Iterate through all the waypoints starting from the closest + 1
         for wp in self.current_waypoints[wp_closest_id + 1 :]:
             if self.getPlaneDistance(wp, self.current_state) > self.lookahead_distance:
                 return wp, wp.id
+
+        # if we are here, it means that all the waypoints behind the closest one are inside the lookahead distance
+        # it could be because the lookahead distance is not at a "good" value
+        # in this case, we return the last waypoint  # TODO improve
+        print("ERROR all waypoints considered are within the lookahead distance")
+        return self.current_waypoints[-1], self.current_waypoints[-1].id
 
     def getPlaneDistance(self, current_wp, current_state):
         # Inputs:
@@ -411,10 +432,10 @@ class Controller:
                     cy + (-big_d * dx + sign * abs(dy) * discriminant**0.5) / dr**2,
                 )
                 for sign in ((1, -1) if dy < 0 else (-1, 1))
-            ]  # This makes sure the order along the segment is correct
-            if (
-                not full_line
-            ):  # If only considering the segment, filter out intersections that do not fall within the segment
+            ]
+            # This makes sure the order along the segment is correct
+            if not full_line:
+                # If only considering the segment, filter out intersections that do not fall within the segment
                 fraction_along_segment = [
                     (xi - p1x) / dx if abs(dx) > abs(dy) else (yi - p1y) / dy
                     for xi, yi in intersections
@@ -424,18 +445,18 @@ class Controller:
                     for pt, frac in zip(intersections, fraction_along_segment)
                     if 0 <= frac <= 1
                 ]
-            if (
-                len(intersections) == 2 and abs(discriminant) <= tangent_tol
-            ):  # If line is tangent to circle, return just one point (as both intersections have same location)
+            if len(intersections) == 2 and abs(discriminant) <= tangent_tol:
+                # If line is tangent to circle, return just one point (as both intersections have same location)
                 return [intersections[0]]
             else:
                 return intersections
 
     # ##################### MISC #####################
 
-    def publish_vehicle_cmd(self, steering_angle):
+    def publish_vehicle_cmd(self):
+        # TODO add some logic to map it to the correct range
         cmd_msg = VehicleCommand()
-        cmd_msg.steering_angle = steering_angle
+        cmd_msg.steering_angle = 0  # self.steering_angle
         cmd_msg.throttle_angle = 0
 
         self.pub_vehicle_cmd.publish(cmd_msg)
@@ -558,7 +579,6 @@ class Controller:
 
         if self.current_state.x != 0 and self.current_state.y != 0:
             plt.cla()
-            print(self.current_state.angle)
 
             # Previous car locations
             for idx in range(len(self.past_n_states) - 1):
