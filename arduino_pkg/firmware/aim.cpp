@@ -21,6 +21,9 @@ const int THROTTLE_OUTPUT_PIN = 7;
 
 const int LED_PIN = 13;
 
+const float PHYSICAL_MAX_ANGLE_STEERING = 0.524; // radians, around 30 degrees
+const float MAX_THROTTLE_UNIT = 100;             // arbitrary unit of throttle cmd sent by the Pi
+
 const float STEERING_IDLE = 79;
 const float STEERING_MAX = 98;
 const float STEERING_MIN = 63;
@@ -59,6 +62,9 @@ volatile float throttle_angle_pi = THROTTLE_IDLE;
 float steering_angle_final = STEERING_IDLE;
 float throttle_angle_final = THROTTLE_IDLE;
 
+// temporary storage values
+volatile float flipped_steering_value_rad = 0;
+
 // channel 1 = steering
 volatile unsigned long tmp_pulse_width_1 = 0;
 volatile unsigned long pulse_width_1 = 0;
@@ -84,8 +90,31 @@ Servo steering_servo;
 ros::NodeHandle nh;
 void vehicle_command_callback(const self_racing_car_msgs::VehicleCommand &msg) {
   digitalWrite(LED_PIN, HIGH - digitalRead(LED_PIN)); // blink the led
-  steering_angle_pi = msg.steering_angle;
-  throttle_angle_pi = msg.throttle_angle;
+
+  // flipping the sign because a positive servo value turns towards the negative direction
+  flipped_steering_value_rad = -msg.steering_value_rad;
+
+  // Convert the steering angle value
+  if (flipped_steering_value_rad >= PHYSICAL_MAX_ANGLE_STEERING) {
+    steering_angle_pi = STEERING_MAX;
+  } else if (flipped_steering_value_rad <= -PHYSICAL_MAX_ANGLE_STEERING) {
+    steering_angle_pi = STEERING_MIN;
+  } else if (flipped_steering_value_rad >= 0) {
+    steering_angle_pi = STEERING_IDLE + flipped_steering_value_rad * ((STEERING_MAX - STEERING_IDLE) / PHYSICAL_MAX_ANGLE_STEERING);
+  } else {
+    steering_angle_pi = STEERING_IDLE + flipped_steering_value_rad * ((STEERING_IDLE - STEERING_MIN) / PHYSICAL_MAX_ANGLE_STEERING);
+  }
+
+  // Converting the throttle value
+  if (msg.throttle_value >= MAX_THROTTLE_UNIT) {
+    throttle_angle_pi = THROTTLE_MAX;
+  } else if (msg.throttle_value <= -MAX_THROTTLE_UNIT) {
+    throttle_angle_pi = THROTTLE_MIN;
+  } else if (msg.throttle_value >= 0) {
+    throttle_angle_pi = THROTTLE_IDLE + msg.throttle_value * ((THROTTLE_MAX - THROTTLE_IDLE) / MAX_THROTTLE_UNIT);
+  } else {
+    throttle_angle_pi = THROTTLE_IDLE + msg.throttle_value * ((THROTTLE_IDLE - THROTTLE_MIN) / MAX_THROTTLE_UNIT);
+  }
 }
 ros::Subscriber<self_racing_car_msgs::VehicleCommand> sub("vehicle_command", &vehicle_command_callback);
 
@@ -242,13 +271,13 @@ void loop() {
   }
 
   // Sending the commands
-  //  display_value("sending steering", steering_angle_final);
-  //  display_value("sending throttle", throttle_angle_final);
+  // display_value("sending steering", steering_angle_final);
+  // display_value("sending throttle", throttle_angle_final);
   steering_servo.write(steering_angle_final);
   throttle_servo.write(throttle_angle_final);
 
   if (ROS_MODE) {
     nh.spinOnce();
   }
-  delay(1);
+  delay(10);
 }

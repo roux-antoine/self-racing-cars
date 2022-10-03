@@ -42,16 +42,17 @@ class Controller:
         # self.rate               = rospy.Rate(self.frequency)
         # self.rate_init          = rospy.Rate(1.0)   # Rate while we wait for topic
         wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
+        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_detailed_waypoints.txt"
         # edges_file = "/home/mattia/catkin_ws/src/controller/src/grattan_edges.txt"
 
-        self.PAST_STATES_WINDOW_SIZE = 20
+        self.PAST_STATES_WINDOW_SIZE = 5
         self.X_AXIS_LIM = 15
         self.Y_AXIS_LIM = 15
-        self.WAYPOINTS_BEHIND_NBR = 3
+        self.WAYPOINTS_BEHIND_NBR = 5
         self.WAYPOINTS_AFTER_NBR = 5
         self.COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
         self.THROTTLE_START_LINE = 10  # TODO improve
-        self.THROTTLE_BASELINE = 20  # TODO improve
+        self.THROTTLE_BASELINE = 50  # TODO improve
         self.START_LINE_WP_THRESHOLD = 10  # TODO improve
 
         # Initial values
@@ -104,7 +105,7 @@ class Controller:
 
             # Publishers
             self.pub_vehicle_cmd = rospy.Publisher(
-                "vehicle_cmd", VehicleCommand, queue_size=10
+                "vehicle_command", VehicleCommand, queue_size=10
             )
 
     # ##################### PURE PURSUIT FUNCTIONS #####################
@@ -520,6 +521,7 @@ class Controller:
     def plot_states_etc(self, _):
 
         if self.current_state.x != 0 and self.current_state.y != 0:
+
             plt.cla()
 
             # Previous car locations
@@ -539,38 +541,33 @@ class Controller:
             self.plot_car_frame()
             self.plot_steering_angle()
 
-            # Lookahead waypoint
-            self.ax.scatter(
-                self.lookahead_wp.x,
-                self.lookahead_wp.y,
-                color="g",
-                label="lookahead waypoint",
-            )
             # Target waypoint
             self.ax.scatter(
                 self.target_wp.x, self.target_wp.y, color="r", label="target waypoint"
             )
 
-            # Lookahead circle
-            lookahead_circle = plt.Circle(
-                (self.current_state.x, self.current_state.y),
-                self.lookahead_distance,
-                color="k",
-                linestyle="--",
-                fill=False,
-                label="Lookahead radius around car",
-            )
-            self.ax.add_patch(lookahead_circle)
+            # NOTE commented to speed up
+            # # Lookahead circle
+            # lookahead_circle = plt.Circle(
+            #     (self.current_state.x, self.current_state.y),
+            #     self.lookahead_distance,
+            #     color="k",
+            #     linestyle="--",
+            #     fill=False,
+            #     label="Lookahead radius around car",
+            # )
+            # self.ax.add_patch(lookahead_circle)
 
-            # Trajectory circle
-            self.plot_trajectory_cicle()
+            # # Trajectory circle
+            # self.plot_trajectory_cicle()
+            # end NOTE
 
             # Waypoints
-            # for idx in range(
-            #     self.id_lookahead_wp - self.WAYPOINTS_BEHIND_NBR,
-            #     self.id_lookahead_wp + self.WAYPOINTS_AFTER_NBR,
-            # ):
-            for idx in range(len(self.current_waypoints)):
+            for idx in range(
+                self.id_lookahead_wp - self.WAYPOINTS_BEHIND_NBR,
+                self.id_lookahead_wp + self.WAYPOINTS_AFTER_NBR,
+            ):
+                # for idx in range(len(self.current_waypoints)):
                 self.ax.scatter(
                     self.current_waypoints[idx].x,
                     self.current_waypoints[idx].y,
@@ -578,8 +575,10 @@ class Controller:
                 )
 
             self.ax.grid()
-            self.ax.legend()
+            # self.ax.legend()  # commented for speed
             self.ax.axis("equal")
+            self.ax.axes.xaxis.set_visible(False)
+            self.ax.axes.yaxis.set_visible(False)
             self.ax.set_xlim(
                 self.current_state.x - self.X_AXIS_LIM,
                 self.current_state.x + self.X_AXIS_LIM,
@@ -596,10 +595,10 @@ if __name__ == "__main__":
     try:
         rospy.init_node("controller")
         controller = Controller()
-        controller.prepare_map()
+        # controller.prepare_map()
 
         ani = FuncAnimation(
-            plt.gcf(), controller.plot_states_etc, interval=50
+            plt.gcf(), controller.plot_states_etc, interval=1
         )  # pretty ugly since it makes us rely on the plotting to iterate it seems
         plt.show()
 
