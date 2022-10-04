@@ -30,8 +30,10 @@ const float STEERING_MAX = 98;
 const float STEERING_MIN = 63;
 
 const float THROTTLE_IDLE = 90;
-const float THROTTLE_MAX = 105;
-const float THROTTLE_MIN = 75;
+const float THROTTLE_MAX_MANUAL = 105;
+const float THROTTLE_MIN_MAMUAL = 75;
+const float THROTTLE_MAX_AUTONOMOUS = 105;
+const float THROTTLE_MIN_AUTONOMOUS = 75;
 
 const unsigned long PULSE_WIDTH_THRESHOLD = 3500;
 
@@ -109,13 +111,13 @@ void vehicle_command_callback(const self_racing_car_msgs::VehicleCommand &msg) {
 
   // Converting the throttle value
   if (msg.throttle_value >= MAX_THROTTLE_UNIT) {
-    throttle_angle_pi = THROTTLE_MAX;
+    throttle_angle_pi = THROTTLE_MAX_AUTONOMOUS;
   } else if (msg.throttle_value <= -MAX_THROTTLE_UNIT) {
-    throttle_angle_pi = THROTTLE_MIN;
+    throttle_angle_pi = THROTTLE_MIN_AUTONOMOUS;
   } else if (msg.throttle_value >= 0) {
-    throttle_angle_pi = THROTTLE_IDLE + msg.throttle_value * ((THROTTLE_MAX - THROTTLE_IDLE) / MAX_THROTTLE_UNIT);
+    throttle_angle_pi = THROTTLE_IDLE + msg.throttle_value * ((THROTTLE_MAX_AUTONOMOUS - THROTTLE_IDLE) / MAX_THROTTLE_UNIT);
   } else {
-    throttle_angle_pi = THROTTLE_IDLE + msg.throttle_value * ((THROTTLE_IDLE - THROTTLE_MIN) / MAX_THROTTLE_UNIT);
+    throttle_angle_pi = THROTTLE_IDLE + msg.throttle_value * ((THROTTLE_IDLE - THROTTLE_MIN_AUTONOMOUS) / MAX_THROTTLE_UNIT);
   }
 }
 ros::Subscriber<self_racing_car_msgs::VehicleCommand> vehicle_command_sub("vehicle_command", &vehicle_command_callback);
@@ -221,9 +223,9 @@ void loop() {
   if (pulse_width_2 < CHANNEL_2_IDLE_MAX && pulse_width_2 > CHANNEL_2_IDLE_MIN) {
     throttle_angle_rx = THROTTLE_IDLE;
   } else if (pulse_width_2 >= CHANNEL_2_IDLE_MAX) {
-    throttle_angle_rx = int(THROTTLE_IDLE + (pulse_width_2 - CHANNEL_2_IDLE_MAX) * ((THROTTLE_MAX - THROTTLE_IDLE) / (CHANNEL_2_MAX - CHANNEL_2_IDLE_MAX)));
+    throttle_angle_rx = int(THROTTLE_IDLE + (pulse_width_2 - CHANNEL_2_IDLE_MAX) * ((THROTTLE_MAX_MANUAL - THROTTLE_IDLE) / (CHANNEL_2_MAX - CHANNEL_2_IDLE_MAX)));
   } else if (pulse_width_2 <= CHANNEL_2_IDLE_MIN) {
-    throttle_angle_rx = int(THROTTLE_IDLE - (CHANNEL_2_IDLE_MIN - pulse_width_2) * ((THROTTLE_IDLE - THROTTLE_MIN) / (CHANNEL_2_IDLE_MIN - CHANNEL_2_MIN)));
+    throttle_angle_rx = int(THROTTLE_IDLE - (CHANNEL_2_IDLE_MIN - pulse_width_2) * ((THROTTLE_IDLE - THROTTLE_MIN_MAMUAL) / (CHANNEL_2_IDLE_MIN - CHANNEL_2_MIN)));
   } else {
   }
 
@@ -262,10 +264,10 @@ void loop() {
     steering_angle_final = STEERING_MIN;
   }
 
-  if (throttle_angle_final > THROTTLE_MAX) {
-    throttle_angle_final = THROTTLE_MAX;
-  } else if (throttle_angle_final < THROTTLE_MIN) {
-    throttle_angle_final = THROTTLE_MIN;
+  if (throttle_angle_final > max(THROTTLE_MAX_MANUAL, THROTTLE_MAX_AUTONOMOUS)) {
+    throttle_angle_final = max(THROTTLE_MAX_MANUAL, THROTTLE_MAX_AUTONOMOUS);
+  } else if (throttle_angle_final < min(THROTTLE_MIN_MAMUAL, THROTTLE_MIN_AUTONOMOUS)) {
+    throttle_angle_final = min(THROTTLE_MIN_MAMUAL, THROTTLE_MIN_AUTONOMOUS);
   }
 
   // Sending the commands

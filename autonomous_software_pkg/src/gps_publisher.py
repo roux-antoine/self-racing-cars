@@ -56,7 +56,7 @@ class GpsPublisher:
                         sys.exit()
 
         # Set the output frequency at 10 Hz
-        self.gps.send_command(b"PMTK220,1000")
+        self.gps.send_command(b"PMTK220,100")
         # NOTE it seems there is no way to make sure the PMTK220 command was applied successfully
 
     def loop(self):
