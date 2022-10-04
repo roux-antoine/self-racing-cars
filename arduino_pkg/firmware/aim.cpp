@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Servo.h>
 #include <ros.h>
+#include <self_racing_car_msgs/ArduinoLogging.h>
 #include <self_racing_car_msgs/VehicleCommand.h>
 
 // ------ CONSTANTS ------
@@ -97,6 +98,7 @@ void vehicle_command_callback(const self_racing_car_msgs::VehicleCommand &msg) {
   // Convert the steering angle value
   if (flipped_steering_value_rad >= PHYSICAL_MAX_ANGLE_STEERING) {
     steering_angle_pi = STEERING_MAX;
+
   } else if (flipped_steering_value_rad <= -PHYSICAL_MAX_ANGLE_STEERING) {
     steering_angle_pi = STEERING_MIN;
   } else if (flipped_steering_value_rad >= 0) {
@@ -116,7 +118,9 @@ void vehicle_command_callback(const self_racing_car_msgs::VehicleCommand &msg) {
     throttle_angle_pi = THROTTLE_IDLE + msg.throttle_value * ((THROTTLE_IDLE - THROTTLE_MIN) / MAX_THROTTLE_UNIT);
   }
 }
-ros::Subscriber<self_racing_car_msgs::VehicleCommand> sub("vehicle_command", &vehicle_command_callback);
+ros::Subscriber<self_racing_car_msgs::VehicleCommand> vehicle_command_sub("vehicle_command", &vehicle_command_callback);
+self_racing_car_msgs::ArduinoLogging arduino_logging_msg;
+ros::Publisher arduino_logging_pub("arduino_logging", &arduino_logging_msg);
 
 // ------ FUNCTIONS ------
 
@@ -171,7 +175,8 @@ void setup() {
   if (ROS_MODE) {
     nh.initNode();
     nh.getHardware()->setBaud(57600);
-    nh.subscribe(sub);
+    nh.subscribe(vehicle_command_sub);
+    nh.advertise(arduino_logging_pub);
     nh.loginfo("In the setup");
   } else {
     Serial.begin(57600);
@@ -222,13 +227,6 @@ void loop() {
   } else {
   }
 
-  // Displaying the values
-  //  display_value("steering Rx: ", steering_angle_rx);
-  //  display_value("throttle Rx: ", throttle_angle_rx);
-  //  display_value("steering Pi: ", steering_angle_pi);
-  //  display_value("throttle Pi: ", throttle_angle_pi);
-  //   display_value("engaged mode: ", engaged_mode);
-
   // checking if we are in override mode
   if (pulse_width_1 < CHANNEL_1_OVERRIDE_MIN || pulse_width_1 > CHANNEL_1_OVERRIDE_MAX) {
     override_steering = true;
@@ -271,13 +269,29 @@ void loop() {
   }
 
   // Sending the commands
-  // display_value("sending steering", steering_angle_final);
-  // display_value("sending throttle", throttle_angle_final);
   steering_servo.write(steering_angle_final);
   throttle_servo.write(throttle_angle_final);
+
+  // Publishing the logging info
+  if (ROS_MODE) {
+    arduino_logging_msg.steering_angle_rx = steering_angle_rx;
+    arduino_logging_msg.throttle_angle_rx = throttle_angle_rx;
+    arduino_logging_msg.steering_angle_pi = steering_angle_pi;
+    arduino_logging_msg.throttle_angle_pi = throttle_angle_pi;
+    arduino_logging_msg.steering_angle_final = steering_angle_final;
+    arduino_logging_msg.throttle_angle_final = throttle_angle_final;
+    arduino_logging_msg.tmp_pulse_width_1 = tmp_pulse_width_1;
+    arduino_logging_msg.tmp_pulse_width_2 = tmp_pulse_width_2;
+    arduino_logging_msg.tmp_pulse_width_3 = tmp_pulse_width_3;
+    arduino_logging_msg.engaged_mode = engaged_mode;
+    arduino_logging_msg.override_steering = override_steering;
+    arduino_logging_msg.override_throttle = override_throttle;
+
+    arduino_logging_pub.publish(&arduino_logging_msg);
+  }
 
   if (ROS_MODE) {
     nh.spinOnce();
   }
-  delay(10);
+  delay(100);
 }
