@@ -33,8 +33,8 @@ class Controller:
         topic_current_state = rospy.get_param("~topic_current_state", "vehicle_state")
         self.lookahead_distance = rospy.get_param(
             "~lookahead_distance", 10
-        )  # max = 40m
-        self.wheel_base = rospy.get_param("~wheel_base", 1)
+        )  # max = 40m, min = half width of the track
+        self.wheel_base = rospy.get_param("~wheel_base", 0.26)
         self.max_curvature = rospy.get_param("~max_curvature", 100000)
         self.min_curvature = rospy.get_param("~min_curvature", 0.3)
         self.past_states_window_size = 5
@@ -42,8 +42,8 @@ class Controller:
         # self.rate               = rospy.Rate(self.frequency)
         # self.rate_init          = rospy.Rate(1.0)   # Rate while we wait for topic
         wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
-        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_detailed_waypoints.txt"
-        # edges_file = "/home/mattia/catkin_ws/src/controller/src/grattan_edges.txt"
+        # wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_detailed_waypoints.txt"
+        edges_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_edges.txt"
 
         self.PAST_STATES_WINDOW_SIZE = 5
         self.X_AXIS_LIM = 15
@@ -51,13 +51,14 @@ class Controller:
         self.WAYPOINTS_BEHIND_NBR = 5
         self.WAYPOINTS_AFTER_NBR = 5
         self.COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-        self.THROTTLE_START_LINE = 10  # TODO improve
+        self.THROTTLE_START_LINE = 40  # TODO improve
         self.THROTTLE_BASELINE = 50  # TODO improve
-        self.START_LINE_WP_THRESHOLD = 10  # TODO improve
+        self.START_LINE_WP_THRESHOLD = 5  # TODO improve
 
         # Initial values
         self.current_state = VehicleState(0, 0, 0, 0, 0, 0, 0)
         self.past_n_states = []
+        self.target_wp = Waypoint(-1, -1, -1, -1)
 
         self.fig = plt.figure()
         self.ax = self.fig.add_subplot(111)
@@ -95,8 +96,8 @@ class Controller:
             # for id, x, y in zip(range(len(waypoints_xs)), waypoints_xs, waypoints_ys):
             #     plt.annotate(id, (x, y))
 
-            # self.edges_xs_list, self.edges_ys_list = self.load_edges(edges_file)
-            self.edges_xs_list, self.edges_ys_list = [], []
+            self.edges_xs_list, self.edges_ys_list = self.load_edges(edges_file)
+            # self.edges_xs_list, self.edges_ys_list = [], []
 
             # Subscribers
             rospy.Subscriber(
@@ -520,6 +521,9 @@ class Controller:
 
     def plot_states_etc(self, _):
 
+        if self.target_wp.x == -1:
+            return
+
         if self.current_state.x != 0 and self.current_state.y != 0:
 
             plt.cla()
@@ -546,20 +550,23 @@ class Controller:
                 self.target_wp.x, self.target_wp.y, color="r", label="target waypoint"
             )
 
-            # NOTE commented to speed up
-            # # Lookahead circle
-            # lookahead_circle = plt.Circle(
-            #     (self.current_state.x, self.current_state.y),
-            #     self.lookahead_distance,
-            #     color="k",
-            #     linestyle="--",
-            #     fill=False,
-            #     label="Lookahead radius around car",
-            # )
-            # self.ax.add_patch(lookahead_circle)
+            for edges_xs, edges_ys in zip(self.edges_xs_list, self.edges_ys_list):
+                self.ax.plot(edges_xs, edges_ys)
 
-            # # Trajectory circle
-            # self.plot_trajectory_cicle()
+            # NOTE commented to speed up
+            # Lookahead circle
+            lookahead_circle = plt.Circle(
+                (self.current_state.x, self.current_state.y),
+                self.lookahead_distance,
+                color="k",
+                linestyle="--",
+                fill=False,
+                label="Lookahead radius around car",
+            )
+            self.ax.add_patch(lookahead_circle)
+
+            # Trajectory circle
+            self.plot_trajectory_cicle()
             # end NOTE
 
             # Waypoints

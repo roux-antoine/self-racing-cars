@@ -22,32 +22,33 @@ const int THROTTLE_OUTPUT_PIN = 7;
 
 const int LED_PIN = 13;
 
-const float PHYSICAL_MAX_ANGLE_STEERING = 0.524; // radians, around 30 degrees
-const float MAX_THROTTLE_UNIT = 100;             // arbitrary unit of throttle cmd sent by the Pi
+const float PHYSICAL_MAX_ANGLE_STEERING = 0.4;  // rad (measuring the max wheel angle)
+const float EFFECTIVE_MAX_ANGLE_STEERING = 0.1; // rad (assuming 2.5m turning radius and 26cm wheelbase)
+const float MAX_THROTTLE_UNIT = 100;            // arbitrary unit of throttle cmd sent by the Pi
 
 const float STEERING_IDLE = 79;
-const float STEERING_MAX = 98;
-const float STEERING_MIN = 63;
+const float STEERING_MAX = 99;
+const float STEERING_MIN = 59;
 
 const float THROTTLE_IDLE = 90;
-const float THROTTLE_MAX_MANUAL = 105;
-const float THROTTLE_MIN_MAMUAL = 75;
-const float THROTTLE_MAX_AUTONOMOUS = 105;
-const float THROTTLE_MIN_AUTONOMOUS = 75;
+const float THROTTLE_MAX_MANUAL = 110;
+const float THROTTLE_MIN_MANUAL = 70;
+const float THROTTLE_MAX_AUTONOMOUS = 110;
+const float THROTTLE_MIN_AUTONOMOUS = 70;
 
 const unsigned long PULSE_WIDTH_THRESHOLD = 3500;
 
-const unsigned long CHANNEL_1_IDLE_MIN = 1486;
-const unsigned long CHANNEL_1_IDLE_MAX = 1521;
-const unsigned long CHANNEL_1_MAX = 2039;
-const unsigned long CHANNEL_1_MIN = 1061;
+const unsigned long CHANNEL_1_IDLE_MIN = 1360;
+const unsigned long CHANNEL_1_IDLE_MAX = 1400;
+const unsigned long CHANNEL_1_MAX = 1904;
+const unsigned long CHANNEL_1_MIN = 950;
 const unsigned long CHANNEL_1_OVERRIDE_MIN = 1275;
 const unsigned long CHANNEL_1_OVERRIDE_MAX = 1780;
 
 const unsigned long CHANNEL_2_IDLE_MIN = 1462;
 const unsigned long CHANNEL_2_IDLE_MAX = 1498;
-const unsigned long CHANNEL_2_MAX = 1660;
-const unsigned long CHANNEL_2_MIN = 1319;
+const unsigned long CHANNEL_2_MAX = 1808;
+const unsigned long CHANNEL_2_MIN = 1180;
 const unsigned long CHANNEL_2_OVERRIDE_MIN = 1390;
 const unsigned long CHANNEL_2_OVERRIDE_MAX = 1579;
 
@@ -98,15 +99,15 @@ void vehicle_command_callback(const self_racing_car_msgs::VehicleCommand &msg) {
   flipped_steering_value_rad = -msg.steering_value_rad;
 
   // Convert the steering angle value
-  if (flipped_steering_value_rad >= PHYSICAL_MAX_ANGLE_STEERING) {
+  if (flipped_steering_value_rad >= EFFECTIVE_MAX_ANGLE_STEERING) {
     steering_angle_pi = STEERING_MAX;
 
-  } else if (flipped_steering_value_rad <= -PHYSICAL_MAX_ANGLE_STEERING) {
+  } else if (flipped_steering_value_rad <= -EFFECTIVE_MAX_ANGLE_STEERING) {
     steering_angle_pi = STEERING_MIN;
   } else if (flipped_steering_value_rad >= 0) {
-    steering_angle_pi = STEERING_IDLE + flipped_steering_value_rad * ((STEERING_MAX - STEERING_IDLE) / PHYSICAL_MAX_ANGLE_STEERING);
+    steering_angle_pi = STEERING_IDLE + flipped_steering_value_rad * ((STEERING_MAX - STEERING_IDLE) / EFFECTIVE_MAX_ANGLE_STEERING);
   } else {
-    steering_angle_pi = STEERING_IDLE + flipped_steering_value_rad * ((STEERING_IDLE - STEERING_MIN) / PHYSICAL_MAX_ANGLE_STEERING);
+    steering_angle_pi = STEERING_IDLE + flipped_steering_value_rad * ((STEERING_IDLE - STEERING_MIN) / EFFECTIVE_MAX_ANGLE_STEERING);
   }
 
   // Converting the throttle value
@@ -225,7 +226,7 @@ void loop() {
   } else if (pulse_width_2 >= CHANNEL_2_IDLE_MAX) {
     throttle_angle_rx = int(THROTTLE_IDLE + (pulse_width_2 - CHANNEL_2_IDLE_MAX) * ((THROTTLE_MAX_MANUAL - THROTTLE_IDLE) / (CHANNEL_2_MAX - CHANNEL_2_IDLE_MAX)));
   } else if (pulse_width_2 <= CHANNEL_2_IDLE_MIN) {
-    throttle_angle_rx = int(THROTTLE_IDLE - (CHANNEL_2_IDLE_MIN - pulse_width_2) * ((THROTTLE_IDLE - THROTTLE_MIN_MAMUAL) / (CHANNEL_2_IDLE_MIN - CHANNEL_2_MIN)));
+    throttle_angle_rx = int(THROTTLE_IDLE - (CHANNEL_2_IDLE_MIN - pulse_width_2) * ((THROTTLE_IDLE - THROTTLE_MIN_MANUAL) / (CHANNEL_2_IDLE_MIN - CHANNEL_2_MIN)));
   } else {
   }
 
@@ -266,8 +267,8 @@ void loop() {
 
   if (throttle_angle_final > max(THROTTLE_MAX_MANUAL, THROTTLE_MAX_AUTONOMOUS)) {
     throttle_angle_final = max(THROTTLE_MAX_MANUAL, THROTTLE_MAX_AUTONOMOUS);
-  } else if (throttle_angle_final < min(THROTTLE_MIN_MAMUAL, THROTTLE_MIN_AUTONOMOUS)) {
-    throttle_angle_final = min(THROTTLE_MIN_MAMUAL, THROTTLE_MIN_AUTONOMOUS);
+  } else if (throttle_angle_final < min(THROTTLE_MIN_MANUAL, THROTTLE_MIN_AUTONOMOUS)) {
+    throttle_angle_final = min(THROTTLE_MIN_MANUAL, THROTTLE_MIN_AUTONOMOUS);
   }
 
   // Sending the commands
