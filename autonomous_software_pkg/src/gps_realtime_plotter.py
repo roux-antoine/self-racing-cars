@@ -2,13 +2,13 @@
 
 import numpy as np
 import rospy
-import utm
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from self_racing_car_msgs.msg import RmcNmea
+from self_racing_car_msgs.msg import VehicleState
 
-MAP_PATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_plotter/lat_lon_files/rex_manor_full.txt"
+WAYPOINTS_FILEPATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
+EDGES_FILEPATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_edges.txt"
 
 
 class RealTimePlotter:
@@ -17,51 +17,64 @@ class RealTimePlotter:
         self.last_lon = None
         self.last_point = [None, None]
         self.previous_points = []
+        self.waypoints_xs, self.waypoints_ys = self.load_waypoints(WAYPOINTS_FILEPATH)
+        self.edges_xs_list, self.edges_ys_list = self.load_edges(EDGES_FILEPATH)
+
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111)
+
+    def load_waypoints(self, filename):
+
+        with open(filename) as waypoints_file:
+            waypoints_xs_ys = [
+                [float(line.split()[0]), float(line.split()[1])]
+                for line in waypoints_file.readlines()
+            ]
+
+        waypoints_xs = np.array(np.array(waypoints_xs_ys)[:, 0])
+        waypoints_ys = np.array(np.array(waypoints_xs_ys)[:, 1])
+
+        return waypoints_xs, waypoints_ys
+
+    def load_edges(self, filename):
+        edges_xs_list = []
+        edges_ys_list = []
+        tmp_xs = []
+        tmp_ys = []
+
+        with open(filename) as edges_file:
+
+            for line in edges_file:
+                if line != "\n":
+                    tmp_xs.append(float(line.split()[0]))
+                    tmp_ys.append(float(line.split()[1]))
+                else:
+                    edges_xs_list.append(tmp_xs)
+                    edges_ys_list.append(tmp_ys)
+                    tmp_xs = []
+                    tmp_ys = []
+                edges_xs_list.append(tmp_xs)
+                edges_ys_list.append(tmp_ys)
+
+        return edges_xs_list, edges_ys_list
 
     def prepare_map(self):
-        tmp_latitudes = []
-        tmp_longitudes = []
 
-        list_latitudes = []
-        list_longitudes = []
-        list_colors = []
-        list_styles = []
+        self.ax.scatter(self.waypoints_xs, self.waypoints_ys, color="k")
 
-        with open(MAP_PATH) as input_file:
-            for line in input_file:
-                if line == "\n":
-                    list_latitudes.append(tmp_latitudes)
-                    list_longitudes.append(tmp_longitudes)
-                    tmp_latitudes = []
-                    tmp_longitudes = []
-                elif line == "edge\n":
-                    list_colors.append("black")
-                    list_styles.append("plot")
-                elif line == "refline\n":
-                    list_colors.append("blue")
-                    list_styles.append("scatter")
-                else:
-                    tmp_latitudes.append(float(line.split()[1]))
-                    tmp_longitudes.append(float(line.split()[0]))
-            list_latitudes.append(tmp_latitudes)
-            list_longitudes.append(tmp_longitudes)
-
-        for lats, lons, color, style in zip(
-            list_latitudes, list_longitudes, list_colors, list_styles
+        for id, x, y in zip(
+            list(range(len(self.waypoints_xs))), self.waypoints_xs, self.waypoints_ys
         ):
-            map_utms = utm.from_latlon(np.array(lats), np.array(lons))
-            if style == "plot":
-                plt.plot(map_utms[:][0], map_utms[:][1], color=color)
-            elif style == "scatter":
-                plt.scatter(map_utms[:][0], map_utms[:][1], color=color)
-            else:
-                print("Error...")
+            self.ax.annotate(id, (x, y))
+
+        for edges_xs, edges_ys in zip(self.edges_xs_list, self.edges_ys_list):
+            self.ax.plot(edges_xs, edges_ys)
+
+        self.ax.grid()
+        self.ax.axis("equal")
 
     def plotting_callback(self, msg):
-        gps_utms = utm.from_latlon(msg.latitude, np.array(msg.longitude))
-        self.last_lat = gps_utms[0]
-        self.last_lon = gps_utms[1]
-        self.last_point = [gps_utms[0], gps_utms[1]]
+        self.last_point = [msg.x, msg.y]
 
     def animate(self, i):
         if self.last_point not in self.previous_points:
@@ -73,6 +86,6 @@ if __name__ == "__main__":
     real_time_plotter = RealTimePlotter()
     real_time_plotter.prepare_map()
     rospy.init_node("real_time_plotter")
-    rospy.Subscriber("gps_info", RmcNmea, real_time_plotter.plotting_callback)
-    ani = FuncAnimation(plt.gcf(), real_time_plotter.animate, interval=50)
+    rospy.Subscriber("vehicle_state", VehicleState, real_time_plotter.plotting_callback)
+    ani = FuncAnimation(plt.gcf(), real_time_plotter.animate, interval=20)
     plt.show()

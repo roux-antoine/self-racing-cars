@@ -37,7 +37,6 @@ class Controller:
         self.wheel_base = rospy.get_param("~wheel_base", 0.26)
         self.max_curvature = rospy.get_param("~max_curvature", 100000)
         self.min_curvature = rospy.get_param("~min_curvature", 0.3)
-        self.past_states_window_size = 5
         # self.frequency          = rospy.get_param('~frequency', 2.0)
         # self.rate               = rospy.Rate(self.frequency)
         # self.rate_init          = rospy.Rate(1.0)   # Rate while we wait for topic
@@ -45,12 +44,11 @@ class Controller:
         # wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_detailed_waypoints.txt"
         edges_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_edges.txt"
 
-        self.PAST_STATES_WINDOW_SIZE = 5
-        self.X_AXIS_LIM = 15
-        self.Y_AXIS_LIM = 15
+        self.PAST_STATES_WINDOW_SIZE = 15
+        self.X_AXIS_LIM = 5
+        self.Y_AXIS_LIM = 5
         self.WAYPOINTS_BEHIND_NBR = 5
         self.WAYPOINTS_AFTER_NBR = 5
-        self.COLOR_CYCLE = plt.rcParams["axes.prop_cycle"].by_key()["color"]
         self.THROTTLE_START_LINE = 40  # TODO improve
         self.THROTTLE_BASELINE = 50  # TODO improve
         self.START_LINE_WP_THRESHOLD = 5  # TODO improve
@@ -530,18 +528,12 @@ class Controller:
 
             # Previous car locations
             for idx in range(len(self.past_n_states) - 1):
-                if idx > len(self.COLOR_CYCLE) - 1:
-                    color = color = self.COLOR_CYCLE[idx + 1 - len(self.past_n_states)]
-                else:
-                    color = "gray"
                 self.ax.scatter(
-                    self.past_n_states[idx].x, self.past_n_states[idx].y, color=color
+                    self.past_n_states[idx].x, self.past_n_states[idx].y, color="gray"
                 )
 
             # Car location, car frame and steering angle
-            self.ax.scatter(
-                self.current_state.x, self.current_state.y, color=self.COLOR_CYCLE[0]
-            )
+            self.ax.scatter(self.current_state.x, self.current_state.y, color="blue")
             self.plot_car_frame()
             self.plot_steering_angle()
 
@@ -553,7 +545,6 @@ class Controller:
             for edges_xs, edges_ys in zip(self.edges_xs_list, self.edges_ys_list):
                 self.ax.plot(edges_xs, edges_ys)
 
-            # NOTE commented to speed up
             # Lookahead circle
             lookahead_circle = plt.Circle(
                 (self.current_state.x, self.current_state.y),
@@ -567,12 +558,14 @@ class Controller:
 
             # Trajectory circle
             self.plot_trajectory_cicle()
-            # end NOTE
 
             # Waypoints
             for idx in range(
-                self.id_lookahead_wp - self.WAYPOINTS_BEHIND_NBR,
-                self.id_lookahead_wp + self.WAYPOINTS_AFTER_NBR,
+                max(self.id_lookahead_wp - self.WAYPOINTS_BEHIND_NBR, 0),
+                min(
+                    self.id_lookahead_wp + self.WAYPOINTS_AFTER_NBR,
+                    len(self.waypoints_xs),
+                ),
             ):
                 # for idx in range(len(self.current_waypoints)):
                 self.ax.scatter(
