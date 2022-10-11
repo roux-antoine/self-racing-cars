@@ -21,6 +21,8 @@ class VehicleStatePublisher:
         self.last_msg_seq = None
         self.JUMPING_MESSAGE_FACTOR = 1
 
+        print("Finished init")
+
     def callback(self, rmc_msg):
 
         # small logic to skip messages if we want

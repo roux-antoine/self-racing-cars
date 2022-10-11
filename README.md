@@ -22,6 +22,7 @@ The virtual environment can be exited by running: `deactivate`
 
 Remember to re-run the `pip3 install -r requirements.txt` every time a new package is added to `requirements.txt`
 
+TODO: figure out why scripts started with rosrun don't find python packages from the virtual env
 
 ### Install pre-commit hooks
 
