@@ -27,7 +27,7 @@ class Waypoint:
 
 
 class Controller:
-    def __init__(self):
+    def __init__(self, gui_flag):
 
         # Parameters
         topic_current_state = rospy.get_param("~topic_current_state", "vehicle_state")
@@ -40,17 +40,16 @@ class Controller:
         # self.frequency          = rospy.get_param('~frequency', 2.0)
         # self.rate               = rospy.Rate(self.frequency)
         # self.rate_init          = rospy.Rate(1.0)   # Rate while we wait for topic
-        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
-        # wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_detailed_waypoints.txt"
-        edges_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_edges.txt"
+        wp_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/laguna_seca_track_waypoints_detail_3m.txt"
+        edges_file = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/laguna_seca_track_inner_edge.txt"
 
-        self.PAST_STATES_WINDOW_SIZE = 15
-        self.X_AXIS_LIM = 5
-        self.Y_AXIS_LIM = 5
-        self.WAYPOINTS_BEHIND_NBR = 5
-        self.WAYPOINTS_AFTER_NBR = 5
+        self.PAST_STATES_WINDOW_SIZE = 10
+        self.X_AXIS_LIM = 50
+        self.Y_AXIS_LIM = 50
+        self.WAYPOINTS_BEHIND_NBR = 6
+        self.WAYPOINTS_AFTER_NBR = 12
         self.THROTTLE_START_LINE = 40  # TODO improve
-        self.THROTTLE_BASELINE = 50  # TODO improve
+        self.THROTTLE_BASELINE = 100  # TODO improve
         self.START_LINE_WP_THRESHOLD = 5  # TODO improve
 
         # Initial values
@@ -58,8 +57,11 @@ class Controller:
         self.past_n_states = []
         self.target_wp = Waypoint(-1, -1, -1, -1)
 
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(111)
+        self.gui_flag = gui_flag
+
+        if self.gui_flag:
+            self.fig = plt.figure()
+            self.ax = self.fig.add_subplot(111)
 
         # Test
         TEST_FAKE_WAYPOINTS = False
@@ -119,10 +121,7 @@ class Controller:
         # while (self.current_waypoints == None or self.current_state == None) and not rospy.is_shutdown():
         #     rospy.logwarn('Waiting for topics ...')
         #     self.rate_init.sleep()
-        #
-        # rospy.logwarn('subscribed to topics - starting')
-        #
-        # while not rospy.is_shutdown():
+
         if True:
 
             # Find lookahead waypoint = First waypoint further than lookahead distance and in front of vehicle
@@ -588,19 +587,23 @@ class Controller:
                 self.current_state.y + self.Y_AXIS_LIM,
             )
 
+        pass
+
 
 # ##################### MAIN #####################
 
 if __name__ == "__main__":
     try:
         rospy.init_node("controller")
-        controller = Controller()
-        # controller.prepare_map()
+        ENABLE_GUI = False
+        controller = Controller(ENABLE_GUI)
 
-        ani = FuncAnimation(
-            plt.gcf(), controller.plot_states_etc, interval=1
-        )  # pretty ugly since it makes us rely on the plotting to iterate it seems
-        plt.show()
-
+        if controller.gui_flag:
+            ani = FuncAnimation(
+                plt.gcf(), controller.plot_states_etc, interval=1
+            )  # pretty ugly since it makes us rely on the plotting to iterate it seems
+            plt.show()
+        else:
+            rospy.spin()
     except rospy.ROSInterruptException:
         pass

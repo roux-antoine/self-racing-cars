@@ -149,11 +149,30 @@ void engaged_mode_callback() {
   tmp_pulse_width_3 = micros() - prev_time_3;
   prev_time_3 = micros();
 
+  // NOTE: logic without hysteresis
+  // if (tmp_pulse_width_3 < PULSE_WIDTH_THRESHOLD) {
+  //   if (tmp_pulse_width_3 > CHANNEL_3_THRESHOLD) {
+  //     engaged_mode = true;
+  //   } else {
+  //     engaged_mode = false;
+  //   }
+  // }
+  // end NOTE
+
+  // logic with hysteresis
   if (tmp_pulse_width_3 < PULSE_WIDTH_THRESHOLD) {
     if (tmp_pulse_width_3 > CHANNEL_3_THRESHOLD) {
-      engaged_mode = true;
+      engagement_hysteresis_counter += 1;
+      disengagement_hysteresis_counter = 0;
     } else {
+      engagement_hysteresis_counter = 0;
+      disengagement_hysteresis_counter += 1;
+    }
+
+    if (disengagement_hysteresis_counter >= 3) {
       engaged_mode = false;
+    } else if (engagement_hysteresis_counter >= 3) {
+      engaged_mode = true;
     }
   }
 }
