@@ -7,8 +7,9 @@ from matplotlib.animation import FuncAnimation
 
 from self_racing_car_msgs.msg import VehicleState
 
-WAYPOINTS_FILEPATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
-EDGES_FILEPATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_edges.txt"
+# WAYPOINTS_FILEPATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/rex_manor_parking_lot_waypoints.txt"
+WAYPOINTS_FILEPATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/laguna_seca_track_waypoints_detail_3m.txt"
+EDGES_FILEPATH = "/home/antoine/workspace/catkin_ws/src/utils/utm_map_generation/x_y_files/laguna_seca_cold_pit_all_edges.txt"
 
 
 class RealTimePlotter:
@@ -62,10 +63,10 @@ class RealTimePlotter:
 
         self.ax.scatter(self.waypoints_xs, self.waypoints_ys, color="k")
 
-        for id, x, y in zip(
-            list(range(len(self.waypoints_xs))), self.waypoints_xs, self.waypoints_ys
-        ):
-            self.ax.annotate(id, (x, y))
+        # for id, x, y in zip(
+        #     list(range(len(self.waypoints_xs))), self.waypoints_xs, self.waypoints_ys
+        # ):
+        # self.ax.annotate(id, (x, y))
 
         for edges_xs, edges_ys in zip(self.edges_xs_list, self.edges_ys_list):
             self.ax.plot(edges_xs, edges_ys)
